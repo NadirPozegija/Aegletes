@@ -1,0 +1,697 @@
+diff --git a/AegletesApp.swift b/AegletesApp.swift
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/AegletesApp.swift
+@@ -0,0 +1,18 @@
++//
++// AegletesApp.swift
++// Aegletes
++//
++// Created by Nadir Pozegija on 3/3/26.
++//
++
++import SwiftUI
++
++@main
++struct AegletesApp: App {
++    var body: some Scene {
++        WindowGroup {
++            ContentView()
++        }
++    }
++}
++
+diff --git a/ExposureModel.swift b/ExposureModel.swift
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ b/ExposureModel.swift
+@@ -0,0 +1,97 @@
++//
++// ExposureModel.swift
++// Aegletes
++//
++// Created by Nadir Pozegija on 3/3/26.
++// Edited on 3/5/26 - Revision 2
++//
++
++import Foundation
++
++enum ExposureLock {
++    case none, iso, aperture, shutter
++}
++
++struct ExposureLockState {
++    var iso: Bool = false
++    var aperture: Bool = false
++    var shutter: Bool = false
++}
++
++struct ExposureSettings {
++    var isoIndex: Int
++    var apertureIndex: Int
++    var shutterIndex: Int
++}
++
++// ISO: 25 → 6400
++let isoValues: [Double] = [
++    25, 50, 100, 200, 400, 800, 1600, 3200, 6400
++]
++
++// Aperture stops
++let apertureValues: [Double] = [1.4, 2, 2.8, 4, 5.6, 8, 11, 16]
++
++// Shutter: 1/4000 → 4s
++let shutterValues: [Double] = [
++    1/4000, 1/2000, 1/1000, 1/500, 1/250,
++    1/125, 1/60, 1/30, 1/15, 1/8,
++    1/4, 1/2, 1, 2, 4
++]
++
++// EV at ISO 100 from settings
++func ev100FromSettings(aperture: Double, shutter: Double, iso: Double) -> Double {
++    // EV100 = log2(N^2 / t) - log2(iso / 100)
++    let base = (aperture * aperture) / shutter
++    return log2(base) - log2(iso / 100.0)
++}
++
++func settingsEV100(_ s: ExposureSettings) -> Double {
++    ev100FromSettings(
++        aperture: apertureValues[s.apertureIndex],
++        shutter: shutterValues[s.shutterIndex],
++        iso: isoValues[s.isoIndex]
++    )
++}
++
++func evDelta(evScene100: Double, evSettings100: Double) -> Double {
++    return evScene100 - evSettings100
++}
++
++// Auto adjust: priority shutter → aperture → ISO, respecting lock
++func autoAdjust(settings: inout ExposureSettings,
++                locks: ExposureLockState,
++                targetEV: Double,
++                maxIterations: Int = 16) {
++
++    var currentEV = settingsEV100(settings)
++
++    func attemptAdjust(for keyPath: WritableKeyPath<ExposureSettings, Int>,
++                       values: [Double]) -> Bool {
++        let oldIndex = settings[keyPath: keyPath]
++        var bestIndex = oldIndex
++        var bestEV = currentEV
++
++        let down = max(oldIndex - 1, 0)
++        let up = min(oldIndex + 1, values.count - 1)
++        let candidates = [down, up].filter { $0 != oldIndex }
++
++        for idx in candidates {
++            var test = settings
++            test[keyPath: keyPath] = idx
++            let newEV = settingsEV100(test)
++            if abs(targetEV - newEV) < abs(targetEV - bestEV) {
++                bestEV = newEV
++                bestIndex = idx
++            }
++        }
++
++        if bestIndex != oldIndex {
++            settings[keyPath: keyPath] = bestIndex
++            currentEV = bestEV
++            return true
++        }
++        return false
++    }
++
++    for _ in 0..<maxIterations {
++        let delta = targetEV - currentEV
++        if abs(delta) < 0.1 { break }
++
++        var changed = false
++
++        // 1) Shutter
++        if !locks.shutter {
++            changed = attemptAdjust(for: \.shutterIndex, values: shutterValues)
++        }
++
++        // 2) Aperture
++        if !changed && !locks.aperture {
++            changed = attemptAdjust(for: \.apertureIndex, values: apertureValues)
++        }
++
++        // 3) ISO
++        if !changed && !locks.iso {
++            changed = attemptAdjust(for: \.isoIndex, values: isoValues)
++        }
++
++        if !changed { break }
++    }
++}
++
+diff --git a/CameraFeed.swift b/CameraFeed.swift
+new file mode 100644
+index 0000000..3333333
+--- /dev/null
++++ b/CameraFeed.swift
+@@ -0,0 +1,188 @@
++//
++// CameraFeed.swift
++// Aegletes
++//
++// Created by Nadir Pozegija on 3/3/26.
++// Edited on 3/5/26 - Revision 7
++//
++
++import AVFoundation
++import UIKit
++import Foundation
++import Combine
++import CoreImage
++import CoreImage.CIFilterBuiltins
++
++enum ExposureControlMode {
++    case auto
++    case manual
++}
++
++final class CameraFeed: NSObject,
++                        ObservableObject,
++                        AVCaptureVideoDataOutputSampleBufferDelegate {
++
++    // Scene EV100 derived from hardware exposure settings
++    @Published var sceneEV100: Double = 0.0
++
++    // Processed frame for preview (after Core Image exposure adjust)
++    @Published var previewFrame: CGImage?
++
++    private let session = AVCaptureSession()
++    private let queue = DispatchQueue(label: "CameraFeedQueue")
++    private var device: AVCaptureDevice?
++
++    private let videoOutput = AVCaptureVideoDataOutput()
++    private let ciContext = CIContext(options: nil)
++
++    // Virtual EV offset to apply in manual mode (set by ViewModel)
++    var previewEVOffset: Double = 0.0
++
++    // Track whether we're using the iPhone's AE as a light meter or full manual control
++    private(set) var mode: ExposureControlMode = .auto
++
++    override init() {
++        super.init()
++        configureSession()
++    }
++
++    func start() { session.startRunning() }
++    func stop() { session.stopRunning() }
++
++    private func configureSession() {
++        session.beginConfiguration()
++        session.sessionPreset = .high
++
++        guard
++            let device = AVCaptureDevice.default(.builtInWideAngleCamera,
++                                                 for: .video,
++                                                 position: .back),
++            let input = try? AVCaptureDeviceInput(device: device),
++            session.canAddInput(input)
++        else { return }
++
++        self.device = device
++        session.addInput(input)
++
++        // Center-weighted auto-exposure using the system’s own meter
++        do {
++            try device.lockForConfiguration()
++            if device.isExposurePointOfInterestSupported {
++                device.exposurePointOfInterest = CGPoint(x: 0.5, y: 0.5) // center
++            }
++            if device.isExposureModeSupported(.continuousAutoExposure) {
++                device.exposureMode = .continuousAutoExposure
++            }
++            device.unlockForConfiguration()
++            mode = .auto
++        } catch {
++            // If configuration fails, just leave defaults
++        }
++
++        // Video output for live EV metering + Core Image preview
++        videoOutput.setSampleBufferDelegate(self, queue: queue)
++        videoOutput.alwaysDiscardsLateVideoFrames = true
++        if session.canAddOutput(videoOutput) {
++            session.addOutput(videoOutput)
++        }
++
++        session.commitConfiguration()
++    }
++
++    // MARK: - Zoom
++
++    func setZoom(factor: CGFloat) {
++        queue.async {
++            guard let device = self.device else { return }
++
++            let minZoom: CGFloat = 1.0
++            let maxZoom = min(device.activeFormat.videoMaxZoomFactor, 8.0)
++            let clamped = max(minZoom, min(factor, maxZoom))
++
++            do {
++                try device.lockForConfiguration()
++                device.videoZoomFactor = clamped
++                device.unlockForConfiguration()
++            } catch {
++            }
++        }
++    }
++
++    // MARK: - Exposure control mode
++
++    func setAutoExposureEnabled(_ enabled: Bool) {
++        queue.async {
++            guard let device = self.device else { return }
++            do {
++                try device.lockForConfiguration()
++                if enabled {
++                    if device.isExposureModeSupported(.continuousAutoExposure) {
++                        device.exposureMode = .continuousAutoExposure
++                    }
++                    self.mode = .auto
++                } else {
++                    if device.isExposureModeSupported(.locked) {
++                        device.exposureMode = .locked
++                    }
++                    self.mode = .manual
++                }
++                device.unlockForConfiguration()
++            } catch {
++                // Ignore configuration errors for now
++            }
++        }
++    }
++
++    // Optional: apply manual ISO/shutter to hardware (not used by preview simulation)
++    func applyManualExposure(iso: Double, shutter: Double) {
++        queue.async {
++            guard let device = self.device else { return }
++
++            do {
++                try device.lockForConfiguration()
++
++                let minISO = device.activeFormat.minISO
++                let maxISO = device.activeFormat.maxISO
++                let targetISO = Float(iso)
++                let clampedISO = max(minISO, min(targetISO, maxISO))
++
++                let desiredDuration = CMTimeMakeWithSeconds(
++                    shutter,
++                    preferredTimescale: 1_000_000_000
++                )
++                let minDuration = device.activeFormat.minExposureDuration
++                let maxDuration = device.activeFormat.maxExposureDuration
++                var duration = desiredDuration
++                if CMTimeCompare(duration, minDuration) < 0 { duration = minDuration }
++                if CMTimeCompare(duration, maxDuration) > 0 { duration = maxDuration }
++
++                device.setExposureModeCustom(duration: duration,
++                                             iso: clampedISO,
++                                             completionHandler: nil)
++                self.mode = .manual
++
++                device.unlockForConfiguration()
++            } catch {
++            }
++        }
++    }
++
++    // MARK: - Live metering + Core Image exposure simulation
++
++    func captureOutput(_ output: AVCaptureOutput,
++                       didOutput sampleBuffer: CMSampleBuffer,
++                       from connection: AVCaptureConnection) {
++
++        guard let device = self.device,
++              let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
++
++        // 1) Compute EV100 from hardware exposure
++        let duration = device.exposureDuration
++        let iso = device.iso
++        let aperture = device.lensAperture
++        let t = max(duration.seconds, 1e-6)
++
++        let evScene = ev100FromSettings(
++            aperture: Double(aperture),
++            shutter: t,
++            iso: Double(iso)
++        )
++
++        // 2) Build CIImage from pixel buffer and fix orientation (portrait)
++        let baseImage = CIImage(cvPixelBuffer: pixelBuffer)
++            .oriented(.right)
++
++        // 3) Apply EV offset (set by ViewModel in manual mode)
++        let currentOffset = previewEVOffset
++        let filteredImage: CIImage
++        if abs(currentOffset) < 1e-6 {
++            filteredImage = baseImage
++        } else {
++            let filter = CIFilter.exposureAdjust()
++            filter.inputImage = baseImage
++            filter.ev = Float(currentOffset)
++            filteredImage = filter.outputImage ?? baseImage
++        }
++
++        // 4) Render to CGImage for preview
++        let extent = filteredImage.extent
++        guard let cg = ciContext.createCGImage(filteredImage, from: extent) else {
++            DispatchQueue.main.async {
++                self.sceneEV100 = evScene
++            }
++            return
++        }
++
++        DispatchQueue.main.async {
++            self.sceneEV100 = evScene
++            self.previewFrame = cg
++        }
++    }
++}
++
+diff --git a/CameraPreview.swift b/CameraPreview.swift
+new file mode 100644
+index 0000000..4444444
+--- /dev/null
++++ b/CameraPreview.swift
+@@ -0,0 +1,32 @@
++//
++// CameraPreview.swift
++// Aegletes
++//
++// Created by Nadir Pozegija on 3/3/26.
++// Edited on 3/5/26 - Revision 2
++//
++
++import SwiftUI
++
++struct CameraPreview: UIViewRepresentable {
++    @ObservedObject var feed: CameraFeed
++
++    func makeUIView(context: Context) -> UIImageView {
++        let imageView = UIImageView()
++        imageView.contentMode = .scaleAspectFill
++        imageView.clipsToBounds = true
++        return imageView
++    }
++
++    func updateUIView(_ uiView: UIImageView, context: Context) {
++        if let cgImage = feed.previewFrame {
++            uiView.image = UIImage(cgImage: cgImage)
++        }
++    }
++}
++
+diff --git a/AegletesViewModel.swift b/AegletesViewModel.swift
+new file mode 100644
+index 0000000..5555555
+--- /dev/null
++++ b/AegletesViewModel.swift
+@@ -0,0 +1,96 @@
++//
++// AegletesViewModel.swift
++// Aegletes
++//
++// Created by Nadir Pozegija on 3/3/26.
++// Edited on 3/5/26 - Revision 10
++//
++
++import Foundation
++import SwiftUI
++import Combine
++
++final class AegletesViewModel: ObservableObject {
++    @Published var camera = CameraFeed()
++    @Published var exposure: ExposureSettings
++    @Published var locks = ExposureLockState()
++
++    // false = light meter (auto AE), true = full manual exposure
++    @Published var manualMode = false
++
++    private var cancellables = Set<AnyCancellable>()
++
++    init() {
++        exposure = ExposureSettings(
++            isoIndex: isoValues.firstIndex(of: 100)!,
++            apertureIndex: apertureValues.firstIndex(of: 8)!,
++            shutterIndex: shutterValues.firstIndex(where: { abs($0 - 1/250) < 1e-6 }) ?? 4
++        )
++
++        camera.$sceneEV100
++            .receive(on: DispatchQueue.main)
++            .sink { [weak self] _ in
++                self?.updateForNewSceneEV()
++                self?.updatePreviewEVOffsetIfNeeded()
++            }
++            .store(in: &cancellables)
++    }
++
++    var sceneEV100Value: Double {
++        camera.sceneEV100
++    }
++
++    var settingsEV100Value: Double {
++        settingsEV100(exposure)
++    }
++
++    var evDeltaValue: Double {
++        evDelta(evScene100: sceneEV100Value, evSettings100: settingsEV100Value)
++    }
++
++    // Light-meter mode: auto adjust unlocked settings toward the scene EV
++    func updateForNewSceneEV() {
++        guard !manualMode else { return }
++
++        var e = exposure
++        autoAdjust(settings: &e, locks: locks, targetEV: camera.sceneEV100)
++        exposure = e
++    }
++
++    // Manual mode: directly apply wheel settings to the physical camera (optional)
++    func applyPickersToCamera() {
++        let iso = isoValues[exposure.isoIndex]
++        let shutter = shutterValues[exposure.shutterIndex]
++        camera.applyManualExposure(iso: iso, shutter: shutter)
++    }
++
++    // Compute and push preview EV offset in manual mode
++    func updatePreviewEVOffsetIfNeeded() {
++        guard manualMode else {
++            camera.previewEVOffset = 0.0
++            return
++        }
++
++        let evTarget = settingsEV100Value
++        let evCamera = sceneEV100Value
++        let delta = evTarget - evCamera
++
++        camera.previewEVOffset = delta
++    }
++
++    // Switch between light-meter mode and manual exposure mode
++    func setManualMode(_ manual: Bool) {
++        manualMode = manual
++
++        if manual {
++            camera.setAutoExposureEnabled(false)
++            // We do NOT change hardware exposure from wheels; we only simulate via previewEVOffset.
++            updatePreviewEVOffsetIfNeeded()
++        } else {
++            camera.previewEVOffset = 0.0
++            camera.setAutoExposureEnabled(true)
++            updateForNewSceneEV()
++        }
++    }
++}
++
+diff --git a/ContentView.swift b/ContentView.swift
+new file mode 100644
+index 0000000..6666666
+--- /dev/null
++++ b/ContentView.swift
+@@ -0,0 +1,146 @@
++//
++// ContentView.swift
++// Aegletes
++//
++// Created by Nadir Pozegija on 3/3/26.
++// Edited on 3/5/26 - Revision 11
++//
++
++import SwiftUI
++
++struct ContentView: View {
++    @StateObject private var vm = AegletesViewModel()
++    @State private var baseZoom: CGFloat = 1.0
++    @GestureState private var pinchScale: CGFloat = 1.0
++
++    var body: some View {
++        ZStack {
++            // Preview in the back
++            CameraPreview(feed: vm.camera)
++                .onAppear { vm.camera.start() }
++                .onDisappear { vm.camera.stop() }
++                .gesture(
++                    MagnificationGesture()
++                        .updating($pinchScale) { value, state, _ in
++                            state = value
++                            let newZoom = baseZoom * value
++                            vm.camera.setZoom(factor: newZoom)
++                        }
++                        .onEnded { value in
++                            baseZoom *= value
++                            if baseZoom < 1.0 { baseZoom = 1.0 }
++                        }
++                )
++                .ignoresSafeArea()
++                .zIndex(0)
++
++            // Overlays (EV, wheels, controls) above preview
++            VStack {
++                // EV Δ at top-center
++                Text(String(format: "EV Δ = %+0.1f", vm.evDeltaValue))
++                    .font(.headline)
++                    .padding(8)
++                    .background(Color.black.opacity(0.6))
++                    .foregroundColor(.white)
++                    .cornerRadius(8)
++                    .padding()
++
++                Spacer()
++
++                // Bottom controls
++                VStack {
++                    HStack {
++                        // ISO picker
++                        paramPicker(
++                            title: "ISO",
++                            values: isoValues.map { String(Int($0)) },
++                            selection: $vm.exposure.isoIndex,
++                            locked: vm.locks.iso,
++                            showLock: !vm.manualMode,
++                            onLockToggle: { vm.locks.iso.toggle() }
++                        )
++                        .onChange(of: vm.exposure.isoIndex) { _, _ in
++                            if vm.manualMode {
++                                vm.updatePreviewEVOffsetIfNeeded()
++                            } else {
++                                vm.updateForNewSceneEV()
++                            }
++                        }
++
++                        // Aperture picker
++                        paramPicker(
++                            title: "f/stop",
++                            values: apertureValues.map { "f/\($0)" },
++                            selection: $vm.exposure.apertureIndex,
++                            locked: vm.locks.aperture,
++                            showLock: !vm.manualMode,
++                            onLockToggle: { vm.locks.aperture.toggle() }
++                        )
++                        .onChange(of: vm.exposure.apertureIndex) { _, _ in
++                            if vm.manualMode {
++                                vm.updatePreviewEVOffsetIfNeeded()
++                            } else {
++                                vm.updateForNewSceneEV()
++                            }
++                        }
++
++                        // Shutter picker
++                        paramPicker(
++                            title: "s",
++                            values: shutterValues.map { value in
++                                if value < 1 {
++                                    return "1/\(Int(round(1.0 / value)))"
++                                } else {
++                                    return "\(Int(round(value)))"
++                                }
++                            },
++                            selection: $vm.exposure.shutterIndex,
++                            locked: vm.locks.shutter,
++                            showLock: !vm.manualMode,
++                            onLockToggle: { vm.locks.shutter.toggle() }
++                        )
++                        .onChange(of: vm.exposure.shutterIndex) { _, _ in
++                            if vm.manualMode {
++                                vm.updatePreviewEVOffsetIfNeeded()
++                            } else {
++                                vm.updateForNewSceneEV()
++                            }
++                        }
++                    }
++                    .frame(height: 180)
++
++                    // Exposure mode selector: light meter (auto) vs full manual exposure
++                    HStack {
++                        Spacer()
++
++                        VStack(spacing: 4) {
++                            Text("Exposure Mode")
++                                .foregroundColor(.white)
++                                .font(.caption)
++
++                            Picker(
++                                "",
++                                selection: Binding(
++                                    get: { vm.manualMode ? 1 : 0 },
++                                    set: { vm.setManualMode($0 == 1) }
++                                )
++                            ) {
++                                Text("Light Meter").tag(0)
++                                Text("Manual").tag(1)
++                            }
++                            .pickerStyle(.segmented)
++                            .frame(maxWidth: 260)
++                        }
++
++                        Spacer()
++                    }
++                    .padding(.horizontal)
++                    .padding(.bottom, 8)
++                }
++                .background(Color.black.opacity(0.6))
++            }
++            .zIndex(1)
++        }
++    }
++
++    private func paramPicker(title: String,
++                             values: [String],
++                             selection: Binding<Int>,
++                             locked: Bool,
++                             showLock: Bool,
++                             onLockToggle: @escaping () -> Void) -> some View {
++
++        VStack {
++            Text(title).foregroundColor(.white)
++            Picker("", selection: selection) {
++                ForEach(values.indices, id: \.self) { idx in
++                    Text(values[idx]).tag(idx)
++                }
++            }
++            .labelsHidden()
++            .pickerStyle(.wheel)
++
++            if showLock {
++                Button(locked ? "Unlock" : "Lock") {
++                    onLockToggle()
++                }
++                .font(.caption)
++                .padding(4)
++                .background(locked ? Color.red : Color.gray)
++                .foregroundColor(.white)
++                .cornerRadius(6)
++            }
++        }
++        .padding(.horizontal, 4)
++    }
++}
++

@@ -1,9 +1,11 @@
 //
-//  ExposureModel.swift
-//  Aegletes
+// ExposureModel.swift
+// Aegletes
 //
-//  Created by Nadir Pozegija on 3/3/26.
+// Created by Nadir Pozegija on 3/3/26.
+// Edited on 3/5/26 - Revision 2
 //
+
 import Foundation
 
 enum ExposureLock {
@@ -15,6 +17,7 @@ struct ExposureLockState {
     var aperture: Bool = false
     var shutter: Bool = false
 }
+
 struct ExposureSettings {
     var isoIndex: Int
     var apertureIndex: Int
@@ -29,11 +32,11 @@ let isoValues: [Double] = [
 // Aperture stops
 let apertureValues: [Double] = [1.4, 2, 2.8, 4, 5.6, 8, 11, 16]
 
-// Shutter: 1/4000 → 4s 
+// Shutter: 1/4000 → 4s
 let shutterValues: [Double] = [
     1/4000, 1/2000, 1/1000, 1/500, 1/250,
-    1/125,  1/60,   1/30,   1/15,  1/8,
-    1/4,    1/2,    1,      2,     4
+    1/125, 1/60, 1/30, 1/15, 1/8,
+    1/4, 1/2, 1, 2, 4
 ]
 
 // EV at ISO 100 from settings
@@ -47,7 +50,7 @@ func settingsEV100(_ s: ExposureSettings) -> Double {
     ev100FromSettings(
         aperture: apertureValues[s.apertureIndex],
         shutter: shutterValues[s.shutterIndex],
-        iso:     isoValues[s.isoIndex]
+        iso: isoValues[s.isoIndex]
     )
 }
 
@@ -60,9 +63,9 @@ func autoAdjust(settings: inout ExposureSettings,
                 locks: ExposureLockState,
                 targetEV: Double,
                 maxIterations: Int = 16) {
+
     var currentEV = settingsEV100(settings)
 
-    // Try moving index ±1 step and accept only if it gets EV closer to target
     func attemptAdjust(for keyPath: WritableKeyPath<ExposureSettings, Int>,
                        values: [Double]) -> Bool {
         let oldIndex = settings[keyPath: keyPath]
@@ -70,7 +73,7 @@ func autoAdjust(settings: inout ExposureSettings,
         var bestEV = currentEV
 
         let down = max(oldIndex - 1, 0)
-        let up   = min(oldIndex + 1, values.count - 1)
+        let up = min(oldIndex + 1, values.count - 1)
         let candidates = [down, up].filter { $0 != oldIndex }
 
         for idx in candidates {
@@ -97,14 +100,16 @@ func autoAdjust(settings: inout ExposureSettings,
 
         var changed = false
 
-        // 1) shutter
+        // 1) Shutter
         if !locks.shutter {
             changed = attemptAdjust(for: \.shutterIndex, values: shutterValues)
         }
-        // 2) aperture
+
+        // 2) Aperture
         if !changed && !locks.aperture {
             changed = attemptAdjust(for: \.apertureIndex, values: apertureValues)
         }
+
         // 3) ISO
         if !changed && !locks.iso {
             changed = attemptAdjust(for: \.isoIndex, values: isoValues)

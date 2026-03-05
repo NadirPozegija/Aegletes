@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/5/26 - Revision 6
+// Edited on 3/5/26 - Revision 14
 //
 
 import Foundation
@@ -18,6 +18,9 @@ final class AegletesViewModel: ObservableObject {
     // false = light meter (auto AE), true = full manual exposure
     @Published var manualMode = false
 
+    // EV offset used for manual preview simulation
+    @Published var previewEVOffset: Double = 0.0
+
     private var cancellables = Set<AnyCancellable>()
 
     init() {
@@ -27,23 +30,31 @@ final class AegletesViewModel: ObservableObject {
             shutterIndex: shutterValues.firstIndex(where: { abs($0 - 1/250) < 1e-6 }) ?? 4
         )
 
-        // Whenever the meter EV changes, update auto settings (light meter mode only)
+        // When scene EV changes, run auto-adjust (in light meter mode)
+        // and recompute preview offset (in manual mode)
         camera.$sceneEV100
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.updateForNewSceneEV()
+                self?.updatePreviewEVOffsetIfNeeded()
             }
             .store(in: &cancellables)
     }
 
+    var sceneEV100Value: Double {
+        camera.sceneEV100
+    }
+
+    var settingsEV100Value: Double {
+        settingsEV100(exposure)
+    }
+
     var evDeltaValue: Double {
-        let sEV = settingsEV100(exposure)
-        return evDelta(evScene100: camera.sceneEV100, evSettings100: sEV)
+        evDelta(evScene100: sceneEV100Value, evSettings100: settingsEV100Value)
     }
 
     // Light-meter mode: auto adjust unlocked settings toward the scene EV
     func updateForNewSceneEV() {
-        // NO automatic adjustments in manual mode
         guard !manualMode else { return }
 
         var e = exposure
@@ -51,25 +62,27 @@ final class AegletesViewModel: ObservableObject {
         exposure = e
     }
 
-    // Manual mode: directly apply wheel settings to the physical camera
-    func applyPickersToCamera() {
-        let iso = isoValues[exposure.isoIndex]
-        let shutter = shutterValues[exposure.shutterIndex]
-        camera.applyManualExposure(iso: iso, shutter: shutter)
+    // Manual mode: simulate exposure via preview only (no hardware changes)
+    func updatePreviewEVOffsetIfNeeded() {
+        guard manualMode else {
+            previewEVOffset = 0.0
+            camera.previewEVOffset = 0.0
+            return
+        }
+
+        let evTarget = settingsEV100Value
+        let evCamera = sceneEV100Value
+
+        // Positive offset should brighten the image, so use camera - target.
+        // If target EV is higher (darker settings), this becomes negative → darker preview.
+        let delta = evCamera - evTarget
+
+        previewEVOffset = delta
+        camera.previewEVOffset = delta
     }
 
-    // Switch between light-meter mode and manual exposure mode
     func setManualMode(_ manual: Bool) {
         manualMode = manual
-
-        if manual {
-            // Full manual: stop using AE as a meter, drive exposure strictly from wheels
-            camera.setAutoExposureEnabled(false)
-            applyPickersToCamera()
-        } else {
-            // Light meter mode: re-enable AE and let autoAdjust align the wheels
-            camera.setAutoExposureEnabled(true)
-            updateForNewSceneEV()
-        }
+        updatePreviewEVOffsetIfNeeded()
     }
 }

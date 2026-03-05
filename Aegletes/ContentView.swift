@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/5/26 - Revision 7
+// Edited on 3/5/26 - Revision 12
 //
 
 import SwiftUI
@@ -14,7 +14,8 @@ struct ContentView: View {
     @GestureState private var pinchScale: CGFloat = 1.0
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack {
+            // CI-based preview in the back
             CameraPreview(feed: vm.camera)
                 .onAppear { vm.camera.start() }
                 .onDisappear { vm.camera.stop() }
@@ -31,10 +32,12 @@ struct ContentView: View {
                         }
                 )
                 .ignoresSafeArea()
+                .zIndex(0)
 
+            // UI overlays
             VStack {
-                // EV display (top-center)
-                Text(String(format: "EV = %+0.1f", vm.evDeltaValue))
+                // EV Δ at top-center
+                Text(String(format: "EV Δ = %+0.1f", vm.evDeltaValue))
                     .font(.headline)
                     .padding(8)
                     .background(Color.black.opacity(0.6))
@@ -50,9 +53,7 @@ struct ContentView: View {
                         // ISO picker
                         paramPicker(
                             title: "ISO",
-                            values: isoValues.map { value in
-                                String(Int(value)) // simpler to read values
-                            },
+                            values: isoValues.map { String(Int($0)) },
                             selection: $vm.exposure.isoIndex,
                             locked: vm.locks.iso,
                             showLock: !vm.manualMode,
@@ -60,10 +61,8 @@ struct ContentView: View {
                         )
                         .onChange(of: vm.exposure.isoIndex) { _, _ in
                             if vm.manualMode {
-                                // Manual: directly apply wheels to camera, no auto logic
-                                vm.applyPickersToCamera()
+                                vm.updatePreviewEVOffsetIfNeeded()
                             } else {
-                                // Light meter mode: re-run auto logic
                                 vm.updateForNewSceneEV()
                             }
                         }
@@ -79,9 +78,7 @@ struct ContentView: View {
                         )
                         .onChange(of: vm.exposure.apertureIndex) { _, _ in
                             if vm.manualMode {
-                                // Aperture is conceptual only; still allow user to change it,
-                                // but no automatic adjustments in manual mode
-                                vm.applyPickersToCamera()
+                                vm.updatePreviewEVOffsetIfNeeded()
                             } else {
                                 vm.updateForNewSceneEV()
                             }
@@ -104,7 +101,7 @@ struct ContentView: View {
                         )
                         .onChange(of: vm.exposure.shutterIndex) { _, _ in
                             if vm.manualMode {
-                                vm.applyPickersToCamera()
+                                vm.updatePreviewEVOffsetIfNeeded()
                             } else {
                                 vm.updateForNewSceneEV()
                             }
@@ -112,7 +109,7 @@ struct ContentView: View {
                     }
                     .frame(height: 180)
 
-                    // Mode selector: light meter (auto) vs full manual exposure
+                    // Exposure mode selector: light meter (auto) vs full manual exposure
                     HStack {
                         Spacer()
 
@@ -142,6 +139,7 @@ struct ContentView: View {
                 }
                 .background(Color.black.opacity(0.6))
             }
+            .zIndex(1)
         }
     }
 
@@ -161,7 +159,6 @@ struct ContentView: View {
             }
             .labelsHidden()
             .pickerStyle(.wheel)
-            // Wheels are never disabled; locks only affect auto logic in light meter mode.
 
             if showLock {
                 Button(locked ? "Unlock" : "Lock") {
