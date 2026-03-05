@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/5/26 - Revision 6
+// Edited on 3/5/26 - Revision 7
 //
 
 import SwiftUI
@@ -18,9 +18,6 @@ struct ContentView: View {
             CameraPreview(feed: vm.camera)
                 .onAppear { vm.camera.start() }
                 .onDisappear { vm.camera.stop() }
-                .onChange(of: vm.camera.sceneEV100) { _, _ in
-                    vm.updateForNewSceneEV()
-                }
                 .gesture(
                     MagnificationGesture()
                         .updating($pinchScale) { value, state, _ in
@@ -82,7 +79,7 @@ struct ContentView: View {
                         )
                         .onChange(of: vm.exposure.apertureIndex) { _, _ in
                             if vm.manualMode {
-                                // Aperture is conceptual only; still allow user to change it
+                                // Aperture is conceptual only; still allow user to change it,
                                 // but no automatic adjustments in manual mode
                                 vm.applyPickersToCamera()
                             } else {
@@ -164,7 +161,7 @@ struct ContentView: View {
             }
             .labelsHidden()
             .pickerStyle(.wheel)
-            // NOTE: wheels are never disabled; locks only affect auto logic.
+            // Wheels are never disabled; locks only affect auto logic in light meter mode.
 
             if showLock {
                 Button(locked ? "Unlock" : "Lock") {

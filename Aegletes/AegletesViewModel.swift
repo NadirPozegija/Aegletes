@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/5/26 - Revision 4
+// Edited on 3/5/26 - Revision 6
 //
 
 import Foundation
@@ -18,12 +18,22 @@ final class AegletesViewModel: ObservableObject {
     // false = light meter (auto AE), true = full manual exposure
     @Published var manualMode = false
 
+    private var cancellables = Set<AnyCancellable>()
+
     init() {
         exposure = ExposureSettings(
             isoIndex: isoValues.firstIndex(of: 100)!,
             apertureIndex: apertureValues.firstIndex(of: 8)!,
             shutterIndex: shutterValues.firstIndex(where: { abs($0 - 1/250) < 1e-6 }) ?? 4
         )
+
+        // Whenever the meter EV changes, update auto settings (light meter mode only)
+        camera.$sceneEV100
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateForNewSceneEV()
+            }
+            .store(in: &cancellables)
     }
 
     var evDeltaValue: Double {
