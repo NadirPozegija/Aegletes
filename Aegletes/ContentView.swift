@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/5/26 - Revision 6
+// Edited on 3/5/26 - Revision 9
 //
 
 import SwiftUI
@@ -14,13 +14,15 @@ struct ContentView: View {
     @GestureState private var pinchScale: CGFloat = 1.0
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack {
+            // Camera preview
             CameraPreview(feed: vm.camera)
-                .onAppear { vm.camera.start() }
-                .onDisappear { vm.camera.stop() }
-                .onChange(of: vm.camera.sceneEV100) { _, _ in
-                    vm.updateForNewSceneEV()
+                .onAppear {
+                    vm.camera.start()
+                    // Take an initial EXIF brightness sample
+                    vm.captureExifBrightnessSample()
                 }
+                .onDisappear { vm.camera.stop() }
                 .gesture(
                     MagnificationGesture()
                         .updating($pinchScale) { value, state, _ in
@@ -35,9 +37,9 @@ struct ContentView: View {
                 )
                 .ignoresSafeArea()
 
+            // EV Δ at top-center
             VStack {
-                // EV display (top-center)
-                Text(String(format: "EV = %+0.1f", vm.evDeltaValue))
+                Text(String(format: "EV Δ = %+0.1f", vm.evDeltaValue))
                     .font(.headline)
                     .padding(8)
                     .background(Color.black.opacity(0.6))
@@ -46,16 +48,47 @@ struct ContentView: View {
                     .padding()
 
                 Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-                // Bottom controls
+            // BrightnessValue (EXIF) & scene EV100 at center-left
+            VStack(alignment: .leading, spacing: 4) {
+                Text("BV_EXIF = \(vm.exifBrightnessLabel)")
+                    .font(.caption)
+                    .padding(4)
+                    .background(Color.black.opacity(0.6))
+                    .foregroundColor(.white)
+                    .cornerRadius(6)
+
+                Text(String(format: "EV100(scene) = %0.2f", vm.sceneEV100Value))
+                    .font(.caption)
+                    .padding(4)
+                    .background(Color.black.opacity(0.6))
+                    .foregroundColor(.white)
+                    .cornerRadius(6)
+
+                Button("Resample BV") {
+                    vm.captureExifBrightnessSample()
+                }
+                .font(.caption2)
+                .padding(4)
+                .background(Color.black.opacity(0.6))
+                .foregroundColor(.white)
+                .cornerRadius(6)
+            }
+            .padding(.leading, 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+
+            // Bottom controls: wheels, metering picker, exposure mode
+            VStack {
+                Spacer()
+
                 VStack {
                     HStack {
                         // ISO picker
                         paramPicker(
                             title: "ISO",
-                            values: isoValues.map { value in
-                                String(Int(value)) // simpler to read values
-                            },
+                            values: isoValues.map { String(Int($0)) },
                             selection: $vm.exposure.isoIndex,
                             locked: vm.locks.iso,
                             showLock: !vm.manualMode,
@@ -63,10 +96,8 @@ struct ContentView: View {
                         )
                         .onChange(of: vm.exposure.isoIndex) { _, _ in
                             if vm.manualMode {
-                                // Manual: directly apply wheels to camera, no auto logic
                                 vm.applyPickersToCamera()
                             } else {
-                                // Light meter mode: re-run auto logic
                                 vm.updateForNewSceneEV()
                             }
                         }
@@ -82,8 +113,6 @@ struct ContentView: View {
                         )
                         .onChange(of: vm.exposure.apertureIndex) { _, _ in
                             if vm.manualMode {
-                                // Aperture is conceptual only; still allow user to change it
-                                // but no automatic adjustments in manual mode
                                 vm.applyPickersToCamera()
                             } else {
                                 vm.updateForNewSceneEV()
@@ -115,7 +144,40 @@ struct ContentView: View {
                     }
                     .frame(height: 180)
 
-                    // Mode selector: light meter (auto) vs full manual exposure
+                    // Metering mode palette picker
+                    HStack {
+                        Spacer()
+
+                        VStack(spacing: 4) {
+                            Text("Metering")
+                                .foregroundColor(.white)
+                                .font(.caption)
+
+                            Picker("Metering", selection: $vm.meteringMode) {
+                                ForEach(MeteringMode.allCases) { mode in
+                                    Label {
+                                        Text(mode.label)
+                                    } icon: {
+                                        Image(systemName: {
+                                            switch mode {
+                                            case .uniform:        return "circle"
+                                            case .centerWeighted: return "circle.inset.filled"
+                                            case .matrix:         return "circle.grid.3x3"
+                                            }
+                                        }())
+                                    }
+                                    .tag(mode)
+                                }
+                            }
+                            .pickerStyle(.palette)
+                        }
+
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 4)
+
+                    // Exposure mode selector: light meter (auto) vs full manual exposure
                     HStack {
                         Spacer()
 
@@ -164,7 +226,6 @@ struct ContentView: View {
             }
             .labelsHidden()
             .pickerStyle(.wheel)
-            // NOTE: wheels are never disabled; locks only affect auto logic.
 
             if showLock {
                 Button(locked ? "Unlock" : "Lock") {

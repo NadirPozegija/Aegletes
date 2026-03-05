@@ -3,25 +3,36 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
+// Edited on 3/5/26 - Revision 4
 //
 
 import AVFoundation
-import CoreVideo
 import UIKit
 import Foundation
 import Combine
+import ImageIO
 
 enum ExposureControlMode {
     case auto
     case manual
 }
 
-final class CameraFeed: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
+final class CameraFeed: NSObject,
+                        ObservableObject,
+                        AVCaptureVideoDataOutputSampleBufferDelegate,
+                        AVCapturePhotoCaptureDelegate {
+
     @Published var sceneEV100: Double = 0.0
+    @Published var meteringMode: MeteringMode = .centerWeighted  // label-only for now
+    @Published var exifBrightnessValue: Double? = nil            // from EXIF
 
     private let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "CameraFeedQueue")
     private var device: AVCaptureDevice?
+
+    private let videoOutput = AVCaptureVideoDataOutput()
+    private let photoOutput = AVCapturePhotoOutput()
+
     // Track whether we're using the iPhone's AE as a light meter or full manual control
     private(set) var mode: ExposureControlMode = .auto
 
@@ -63,12 +74,18 @@ final class CameraFeed: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             // If configuration fails, just leave defaults
         }
 
-        let output = AVCaptureVideoDataOutput()
-        output.setSampleBufferDelegate(self, queue: queue)
-        output.alwaysDiscardsLateVideoFrames = true
+        // Video output for live EV metering
+        videoOutput.setSampleBufferDelegate(self, queue: queue)
+        videoOutput.alwaysDiscardsLateVideoFrames = true
+        if session.canAddOutput(videoOutput) {
+            session.addOutput(videoOutput)
+        }
 
-        guard session.canAddOutput(output) else { return }
-        session.addOutput(output)
+        // Photo output for EXIF metadata (BrightnessValue)
+        if session.canAddOutput(photoOutput) {
+            session.addOutput(photoOutput)
+        }
+
         session.commitConfiguration()
     }
 
@@ -80,7 +97,6 @@ final class CameraFeed: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
 
     // MARK: - Zoom
 
-    // pinch to zoom functionality
     func setZoom(factor: CGFloat) {
         queue.async {
             guard let device = self.device else { return }
@@ -100,7 +116,6 @@ final class CameraFeed: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
 
     // MARK: - Exposure control mode
 
-    // Switch between auto AE (used as a light meter) and manual exposure
     func setAutoExposureEnabled(_ enabled: Bool) {
         queue.async {
             guard let device = self.device else { return }
@@ -113,7 +128,6 @@ final class CameraFeed: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                     self.mode = .auto
                 } else {
                     // For manual, we will drive exposure via setExposureModeCustom.
-                    // exposureMode will become .custom when we call that.
                     if device.isExposureModeSupported(.locked) {
                         device.exposureMode = .locked
                     }
@@ -141,14 +155,19 @@ final class CameraFeed: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                 let clampedISO = max(minISO, min(targetISO, maxISO))
 
                 // Clamp shutter to device range
-                let desiredDuration = CMTimeMakeWithSeconds(shutter, preferredTimescale: 1_000_000_000)
+                let desiredDuration = CMTimeMakeWithSeconds(
+                    shutter,
+                    preferredTimescale: 1_000_000_000
+                )
                 let minDuration = device.activeFormat.minExposureDuration
                 let maxDuration = device.activeFormat.maxExposureDuration
                 var duration = desiredDuration
                 if CMTimeCompare(duration, minDuration) < 0 { duration = minDuration }
                 if CMTimeCompare(duration, maxDuration) > 0 { duration = maxDuration }
 
-                device.setExposureModeCustom(duration: duration, iso: clampedISO, completionHandler: nil)
+                device.setExposureModeCustom(duration: duration,
+                                             iso: clampedISO,
+                                             completionHandler: nil)
                 self.mode = .manual
 
                 device.unlockForConfiguration()
@@ -158,29 +177,60 @@ final class CameraFeed: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         }
     }
 
-    // MARK: - Metering from camera exposure (NOT pixel brightness)
+    // MARK: - Live metering from exposure settings (no pixels)
 
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
+
         guard let device = self.device else { return }
 
-        // Read the camera's current exposure settings
-        let duration = device.exposureDuration // CMTime
-        let iso = device.iso // Float
-        let aperture = device.lensAperture // Float (fixed per lens)
-        let t = max(duration.seconds, 1e-6) // shutter time in seconds as Double
+        // Read the camera's current exposure settings (AE or manual)
+        let duration = device.exposureDuration   // CMTime
+        let iso = device.iso                     // Float
+        let aperture = device.lensAperture       // Float (fixed per lens)
+        let t = max(duration.seconds, 1e-6)      // shutter time in seconds as Double
 
-        // Use the same EV100 function as elsewhere
+        // Base EV100 from exposure settings
         let evScene = ev100FromSettings(
             aperture: Double(aperture),
             shutter: t,
             iso: Double(iso)
         )
 
-        // Only treat this as a "scene meter" when AE is enabled
         DispatchQueue.main.async {
             self.sceneEV100 = evScene
         }
     }
+
+    // MARK: - EXIF BrightnessValue sampling
+
+    func captureExifBrightnessSample() {
+        let settings = AVCapturePhotoSettings()
+        if #available(iOS 16.0, *) {
+            // Use a modest size since we only need metadata; adjust as needed
+            settings.maxPhotoDimensions = .init(width: 1920, height: 1080)
+        } else {
+            // Fallback for older OSes where maxPhotoDimensions isn't available
+            settings.isHighResolutionPhotoEnabled = false
+        }
+        photoOutput.capturePhoto(with: settings, delegate: self)
+    }
+
+    func photoOutput(_ output: AVCapturePhotoOutput,
+                     didFinishProcessingPhoto photo: AVCapturePhoto,
+                     error: Error?) {
+
+        guard error == nil else { return }
+
+        let metadata = photo.metadata
+
+        if let exif = metadata[kCGImagePropertyExifDictionary as String] as? [String: Any],
+           let bv = exif[kCGImagePropertyExifBrightnessValue as String] as? Double {
+            DispatchQueue.main.async {
+                self.exifBrightnessValue = bv
+            }
+        }
+    }
 }
+

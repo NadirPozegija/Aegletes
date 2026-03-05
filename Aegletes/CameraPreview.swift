@@ -1,9 +1,10 @@
 //
-//  CameraPreview.swift
-//  Aegletes
+// CameraPreview.swift
+// Aegletes
 //
-//  Created by Nadir Pozegija on 3/3/26.
+// Created by Nadir Pozegija on 3/3/26.
 //
+
 import SwiftUI
 import AVFoundation
 
@@ -19,7 +20,9 @@ struct CameraPreview: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
-        guard let layer = uiView.layer.sublayers?.first as? AVCaptureVideoPreviewLayer else { return }
+        guard let layer = uiView.layer.sublayers?.first as? AVCaptureVideoPreviewLayer else {
+            return
+        }
         layer.frame = uiView.bounds
     }
 }

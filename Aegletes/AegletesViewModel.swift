@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/5/26 - Revision 4
+// Edited on 3/5/26 - Revision 8
 //
 
 import Foundation
@@ -18,17 +18,54 @@ final class AegletesViewModel: ObservableObject {
     // false = light meter (auto AE), true = full manual exposure
     @Published var manualMode = false
 
+    // Metering mode selection; forwarded to CameraFeed
+    @Published var meteringMode: MeteringMode = .centerWeighted {
+        didSet { camera.meteringMode = meteringMode }
+    }
+
+    private var cancellables = Set<AnyCancellable>()
+
     init() {
         exposure = ExposureSettings(
             isoIndex: isoValues.firstIndex(of: 100)!,
             apertureIndex: apertureValues.firstIndex(of: 8)!,
             shutterIndex: shutterValues.firstIndex(where: { abs($0 - 1/250) < 1e-6 }) ?? 4
         )
+
+        // Ensure camera starts with same metering mode
+        camera.meteringMode = meteringMode
+
+        // Whenever the meter EV changes, update auto settings (light meter mode only)
+        camera.$sceneEV100
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateForNewSceneEV()
+            }
+            .store(in: &cancellables)
     }
 
+    // EXIF BrightnessValue from a sampled still image (may be nil)
+    var exifBrightnessLabel: String {
+        if let bv = camera.exifBrightnessValue {
+            return String(format: "%0.2f", bv)
+        } else {
+            return "--"
+        }
+    }
+
+    // Scene EV at ISO 100 from live exposure settings
+    var sceneEV100Value: Double {
+        camera.sceneEV100
+    }
+
+    // EV100 from current wheel settings
+    var settingsEV100Value: Double {
+        settingsEV100(exposure)
+    }
+
+    // Difference between scene EV and settings EV
     var evDeltaValue: Double {
-        let sEV = settingsEV100(exposure)
-        return evDelta(evScene100: camera.sceneEV100, evSettings100: sEV)
+        evDelta(evScene100: sceneEV100Value, evSettings100: settingsEV100Value)
     }
 
     // Light-meter mode: auto adjust unlocked settings toward the scene EV
@@ -48,16 +85,19 @@ final class AegletesViewModel: ObservableObject {
         camera.applyManualExposure(iso: iso, shutter: shutter)
     }
 
+    // Trigger a single EXIF BrightnessValue sample
+    func captureExifBrightnessSample() {
+        camera.captureExifBrightnessSample()
+    }
+
     // Switch between light-meter mode and manual exposure mode
     func setManualMode(_ manual: Bool) {
         manualMode = manual
 
         if manual {
-            // Full manual: stop using AE as a meter, drive exposure strictly from wheels
             camera.setAutoExposureEnabled(false)
             applyPickersToCamera()
         } else {
-            // Light meter mode: re-enable AE and let autoAdjust align the wheels
             camera.setAutoExposureEnabled(true)
             updateForNewSceneEV()
         }
