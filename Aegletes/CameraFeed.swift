@@ -56,18 +56,17 @@ final class CameraFeed: NSObject,
         self.device = device
         session.addInput(input)
 
-        // Center-weighted auto-exposure
+        // Removed center weighted exposure bias as the iPhone camera has a really good
+        // matrix metering system that will probably outperform the FM2
+        // Let the system decide metering pattern (no explicit center weight)
         do {
             try device.lockForConfiguration()
-            if device.isExposurePointOfInterestSupported {
-                device.exposurePointOfInterest = CGPoint(x: 0.5, y: 0.5)
-            }
             if device.isExposureModeSupported(.continuousAutoExposure) {
                 device.exposureMode = .continuousAutoExposure
             }
             device.unlockForConfiguration()
         } catch {
-            // Leave defaults if configuration fails
+            // If configuration fails, just leave defaults
         }
 
         videoOutput.setSampleBufferDelegate(self, queue: queue)
@@ -123,15 +122,28 @@ final class CameraFeed: NSObject,
         var image = CIImage(cvPixelBuffer: pixelBuffer)
             .oriented(.right)   // adjust if needed: .left or remove
 
-        // 3) Apply EV offset from the view model (manual mode only)
-        let offset = previewEVOffset
-        if abs(offset) > 1e-6 {
+        // 3) Apply EV offset from the view model (manual mode only) with nonlinear mapping
+        let rawOffset = previewEVOffset
+
+        // Nonlinear mapping: compress large EVs, keep small changes responsive
+        // - k controls how quickly it compresses
+        // - maxEV is the maximum effective adjustment in the filter
+        let k = 0.25         // tuning parameter: higher = stronger compression
+        let maxEV = 6.0     // clamp effective EV to about ±3 stops
+
+        let mappedOffset: Double
+        if abs(rawOffset) < 1e-6 {
+            mappedOffset = 0.0
+        } else {
+            // tanh maps (-∞, +∞) → (-1, +1); scale by maxEV
+            mappedOffset = Double(tanh(rawOffset * k)) * maxEV
+        }
+
+        if abs(mappedOffset) > 1e-3 {
             let filter = CIFilter.exposureAdjust()
             filter.inputImage = image
-            filter.ev = Float(offset)
-            if let out = filter.outputImage {
-                image = out
-            }
+            filter.ev = Float(mappedOffset)
+            image = filter.outputImage ?? image
         }
 
         // 4) Render to CGImage for preview
