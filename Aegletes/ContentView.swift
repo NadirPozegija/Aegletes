@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/5/26 - Revision 26
+// Edited on 3/6/26 - Revision 29 (Histogram layout + EV badge state)
 //
 
 import SwiftUI
@@ -13,6 +13,8 @@ struct ContentView: View {
     @StateObject private var vm = AegletesViewModel()
     @State private var baseZoom: CGFloat = 1.0
     @GestureState private var pinchScale: CGFloat = 1.0
+
+    @State private var showHistogram = false
 
     var body: some View {
         ZStack {
@@ -37,11 +39,26 @@ struct ContentView: View {
 
             // UI overlays
             VStack {
-                // EV Δ badge at top-center
-                EVBadge(evDelta: vm.evDeltaValue)
+                // EV Δ badge at top-center (tap to toggle histogram)
+                EVBadge(evDelta: vm.evDeltaValue,
+                        isHistogramActive: showHistogram)
                     .padding(.top, 8)
+                    .onTapGesture {
+                        showHistogram.toggle()
+                    }
 
                 Spacer()
+
+                // Histogram sitting directly above the bottom panel
+                if showHistogram {
+                    LuminanceHistogramView(
+                        bins: vm.camera.histogramBins,
+                        targetOffsetEV: vm.evDeltaValue
+                    )
+                    .frame(height: 80)
+                    .padding(.horizontal, 12)
+                    .transition(.opacity)
+                }
 
                 // Bottom controls
                 VStack {
@@ -201,6 +218,7 @@ struct ContentView: View {
 
 private struct EVBadge: View {
     let evDelta: Double
+    let isHistogramActive: Bool
 
     var body: some View {
         let text = String(format: "EV Δ = %+0.1f", evDelta)
@@ -215,7 +233,12 @@ private struct EVBadge: View {
             )
             .overlay(
                 Capsule()
-                    .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                    .stroke(
+                        isHistogramActive
+                        ? Color.green.opacity(0.9)
+                        : Color.white.opacity(0.35),
+                        lineWidth: 1.5
+                    )
             )
             .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 2)
     }
@@ -238,11 +261,11 @@ private struct ModeSelector: View {
                 Text("Light Meter")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(.white)
-                    .frame(maxWidth: .infinity) 
+                    .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
                     .background(
                         Capsule()
-                            .fill(Color.yellow.opacity(isManual ? 0.0 : 0.35))
+                            .fill(Color.orange.opacity(isManual ? 0.0 : 0.35))
                     )
             }
             .buttonStyle(.plain)

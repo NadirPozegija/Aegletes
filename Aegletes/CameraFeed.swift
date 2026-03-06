@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/5/26 - Revision 9
+// Edited on 3/6/26 - Histogram support
 //
 
 import AVFoundation
@@ -13,6 +13,11 @@ import Combine
 import CoreImage
 import CoreImage.CIFilterBuiltins
 
+enum ExposureControlMode {
+    case auto
+    case manual
+}
+
 final class CameraFeed: NSObject,
                         ObservableObject,
                         AVCaptureVideoDataOutputSampleBufferDelegate {
@@ -20,8 +25,11 @@ final class CameraFeed: NSObject,
     // Scene EV100 derived from hardware exposure settings
     @Published var sceneEV100: Double = 0.0
 
-    // CI-processed frame for preview
+    // Processed frame for preview (after Core Image exposure adjust)
     @Published var previewFrame: CGImage?
+
+    // Luminance histogram bins (normalized 0..1, 64 bins)
+    @Published var histogramBins: [CGFloat] = Array(repeating: 0, count: 64)
 
     private let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "CameraFeedQueue")
@@ -32,6 +40,16 @@ final class CameraFeed: NSObject,
 
     // Virtual EV offset to apply in manual mode (set by ViewModel)
     var previewEVOffset: Double = 0.0
+
+    // Histogram processor (10 Hz, 64 bins)
+    private lazy var histogramProcessor = HistogramProcessor(
+        ciContext: ciContext,
+        binCount: 64,
+        minUpdateInterval: 0.1
+    )
+
+    // Track whether we're using the iPhone's AE as a light meter or full manual control
+    private(set) var mode: ExposureControlMode = .auto
 
     override init() {
         super.init()
@@ -56,19 +74,22 @@ final class CameraFeed: NSObject,
         self.device = device
         session.addInput(input)
 
-        // Removed center weighted exposure bias as the iPhone camera has a really good
-        // matrix metering system that will probably outperform the FM2
-        // Let the system decide metering pattern (no explicit center weight)
+        // Center-weighted auto-exposure using the system’s own meter
         do {
             try device.lockForConfiguration()
+            if device.isExposurePointOfInterestSupported {
+                device.exposurePointOfInterest = CGPoint(x: 0.5, y: 0.5) // center
+            }
             if device.isExposureModeSupported(.continuousAutoExposure) {
                 device.exposureMode = .continuousAutoExposure
             }
             device.unlockForConfiguration()
+            mode = .auto
         } catch {
             // If configuration fails, just leave defaults
         }
 
+        // Video output for live EV metering + Core Image preview
         videoOutput.setSampleBufferDelegate(self, queue: queue)
         videoOutput.alwaysDiscardsLateVideoFrames = true
         if session.canAddOutput(videoOutput) {
@@ -76,6 +97,12 @@ final class CameraFeed: NSObject,
         }
 
         session.commitConfiguration()
+    }
+
+    func makePreviewLayer() -> AVCaptureVideoPreviewLayer {
+        let layer = AVCaptureVideoPreviewLayer(session: session)
+        layer.videoGravity = .resizeAspectFill
+        return layer
     }
 
     // MARK: - Zoom
@@ -97,7 +124,66 @@ final class CameraFeed: NSObject,
         }
     }
 
-    // MARK: - CI-based preview + metering
+    // MARK: - Exposure control mode
+
+    func setAutoExposureEnabled(_ enabled: Bool) {
+        queue.async {
+            guard let device = self.device else { return }
+            do {
+                try device.lockForConfiguration()
+                if enabled {
+                    if device.isExposureModeSupported(.continuousAutoExposure) {
+                        device.exposureMode = .continuousAutoExposure
+                    }
+                    self.mode = .auto
+                } else {
+                    if device.isExposureModeSupported(.locked) {
+                        device.exposureMode = .locked
+                    }
+                    self.mode = .manual
+                }
+                device.unlockForConfiguration()
+            } catch {
+                // Ignore configuration errors for now
+            }
+        }
+    }
+
+    // Optional: apply manual ISO/shutter to hardware (not used by preview simulation)
+    func applyManualExposure(iso: Double, shutter: Double) {
+        queue.async {
+            guard let device = self.device else { return }
+
+            do {
+                try device.lockForConfiguration()
+
+                let minISO = device.activeFormat.minISO
+                let maxISO = device.activeFormat.maxISO
+                let targetISO = Float(iso)
+                let clampedISO = max(minISO, min(targetISO, maxISO))
+
+                let desiredDuration = CMTimeMakeWithSeconds(
+                    shutter,
+                    preferredTimescale: 1_000_000_000
+                )
+                let minDuration = device.activeFormat.minExposureDuration
+                let maxDuration = device.activeFormat.maxExposureDuration
+                var duration = desiredDuration
+                if CMTimeCompare(duration, minDuration) < 0 { duration = minDuration }
+                if CMTimeCompare(duration, maxDuration) > 0 { duration = maxDuration }
+
+                device.setExposureModeCustom(duration: duration,
+                                             iso: clampedISO,
+                                             completionHandler: nil)
+                self.mode = .manual
+
+                device.unlockForConfiguration()
+            } catch {
+            }
+        }
+    }
+
+    // MARK: - Live metering + Core Image exposure simulation + histogram
 
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
@@ -120,33 +206,27 @@ final class CameraFeed: NSObject,
 
         // 2) Build CIImage from pixel buffer and orient to portrait
         var image = CIImage(cvPixelBuffer: pixelBuffer)
-            .oriented(.right)   // adjusted from landcape to portrait
+            .oriented(.right)
 
-        // 3) Apply EV offset from the view model (manual mode only) with nonlinear mapping
-        let rawOffset = previewEVOffset
-
-        // Nonlinear mapping: compress large EVs, keep small changes responsive
-        // - k controls how quickly it compresses
-        // - maxEV is the maximum effective adjustment in the filter
-        let k = 0.20        // tuning parameter: higher = stronger compression
-        let maxEV = 8.0     // clamp effective EV to about ±8 stops
-
-        let mappedOffset: Double
-        if abs(rawOffset) < 1e-6 {
-            mappedOffset = 0.0
-        } else {
-            // tanh maps (-∞, +∞) → (-1, +1); scale by maxEV
-            mappedOffset = Double(tanh(rawOffset * k)) * maxEV
+        // 3) Update histogram at most 10 Hz (does not throttle preview)
+        if let bins = histogramProcessor.updateHistogramIfNeeded(for: image) {
+            DispatchQueue.main.async {
+                self.histogramBins = bins
+            }
         }
 
-        if abs(mappedOffset) > 1e-3 {
+        // 4) Apply EV offset (set by ViewModel in manual mode) for preview
+        let offset = previewEVOffset
+        if abs(offset) > 1e-6 {
             let filter = CIFilter.exposureAdjust()
             filter.inputImage = image
-            filter.ev = Float(mappedOffset)
-            image = filter.outputImage ?? image
+            filter.ev = Float(offset)
+            if let out = filter.outputImage {
+                image = out
+            }
         }
 
-        // 4) Render to CGImage for preview
+        // 5) Render to CGImage for preview
         let extent = image.extent
         guard let cg = ciContext.createCGImage(image, from: extent) else {
             DispatchQueue.main.async {
