@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/5/26 - Revision 24
+// Edited on 3/5/26 - Revision 25
 //
 
 import SwiftUI
@@ -110,19 +110,12 @@ struct ContentView: View {
                         Spacer()
 
                         VStack(spacing: 6) {
-                            // Slight bump down from wheels row
-                            Picker(
-                                "",
-                                selection: Binding(
-                                    get: { vm.manualMode ? 1 : 0 },
-                                    set: { vm.setManualMode($0 == 1) }
+                            ModeSelector(
+                                isManual: Binding(
+                                    get: { vm.manualMode },
+                                    set: { vm.setManualMode($0) }
                                 )
-                            ) {
-                                Text("Light Meter").tag(0)
-                                Text("Manual").tag(1)
-                            }
-                            .pickerStyle(.segmented)
-                            .tint(vm.manualMode ? Color.orange : Color.accentColor)
+                            )
                             .frame(maxWidth: 260)
 
                             Text("Exposure Mode")
@@ -221,5 +214,52 @@ private struct EVBadge: View {
                     .stroke(Color.white.opacity(0.35), lineWidth: 1)
             )
             .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 2)
+    }
+}
+
+// MARK: - Mode Selector (custom tinted segments)
+
+private struct ModeSelector: View {
+    @Binding var isManual: Bool
+
+    var body: some View {
+        HStack(spacing: 0) {
+            // Light Meter segment
+            Button {
+                isManual = false
+            } label: {
+                Text("Light Meter")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(Color.orange.opacity(isManual ? 0.0 : 0.25))
+                    )
+            }
+            .buttonStyle(.plain)
+
+            // Manual segment
+            Button {
+                isManual = true
+            } label: {
+                Text("Manual")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(Color.green.opacity(isManual ? 0.25 : 0.0))
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(2)
+        .background(
+            Capsule()
+                .stroke(Color.white.opacity(0.4), lineWidth: 1)
+        )
     }
 }
