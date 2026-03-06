@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/5/26 - Revision 20
+// Edited on 3/5/26 - Revision 24
 //
 
 import SwiftUI
@@ -44,7 +44,7 @@ struct ContentView: View {
 
                 // Bottom controls
                 VStack {
-                    // Wheels row (fixed height to keep panel static)
+                    // Wheels row with fixed height (panel stays static)
                     HStack(alignment: .top) {
                         // ISO picker
                         paramPicker(
@@ -103,13 +103,14 @@ struct ContentView: View {
                             }
                         }
                     }
-                    .frame(height: 200)  // static height for wheels + optional locks
+                    .frame(height: 190)  // fixed row height; wheels adjust within this
 
                     // Exposure mode selector: Light Meter vs Manual
                     HStack {
                         Spacer()
 
-                        VStack(spacing: 4) {
+                        VStack(spacing: 6) {
+                            // Slight bump down from wheels row
                             Picker(
                                 "",
                                 selection: Binding(
@@ -131,13 +132,14 @@ struct ContentView: View {
 
                         Spacer()
                     }
+                    .padding(.top, 4)
                     .padding(.horizontal)
                     .padding(.bottom, 8)
                 }
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
                 .padding(.bottom, 8)
-                .background(Color.black.opacity(0.6)) // solid dark panel, extends to bottom
+                .background(Color.black.opacity(0.6))
                 .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 4)
             }
             .padding(.bottom, 0)
@@ -152,11 +154,17 @@ struct ContentView: View {
                              showLock: Bool,
                              onLockToggle: @escaping () -> Void) -> some View {
 
-        VStack(spacing: 6) {
-            // Caption label
+        // Base wheel height and how much to trade with the lock space
+        let baseWheelHeight: CGFloat = 150
+        let lockTrade: CGFloat = 15
+        let wheelHeight = showLock ? (baseWheelHeight - lockTrade)   // shrink up a bit for locks
+                                   : (baseWheelHeight + lockTrade)   // expand down into lock space
+
+        return VStack(spacing: 6) {
+            // Title: fixed position, 16pt, semibold, serif
             Text(title)
                 .foregroundColor(.white.opacity(0.8))
-                .font(.caption)
+                .font(.system(size: 16, weight: .semibold, design: .serif))
 
             // Wheel picker with center outline only (no filled highlight)
             ZStack {
@@ -167,7 +175,7 @@ struct ContentView: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.wheel)
-                .frame(width: 90, height: 170)  // slightly taller wheels
+                .frame(width: 90, height: wheelHeight)
 
                 // Center outline band (no fill)
                 RoundedRectangle(cornerRadius: 8)
