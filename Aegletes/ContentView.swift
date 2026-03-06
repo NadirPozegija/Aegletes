@@ -238,11 +238,11 @@ private struct ModeSelector: View {
                 Text("Light Meter")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity) 
                     .padding(.vertical, 6)
                     .background(
                         Capsule()
-                            .fill(Color.orange.opacity(isManual ? 0.0 : 0.25))
+                            .fill(Color.yellow.opacity(isManual ? 0.0 : 0.35))
                     )
             }
             .buttonStyle(.plain)
@@ -261,7 +261,7 @@ private struct ModeSelector: View {
                     .padding(.vertical, 6)
                     .background(
                         Capsule()
-                            .fill(Color.green.opacity(isManual ? 0.25 : 0.0))
+                            .fill(Color.blue.opacity(isManual ? 0.35 : 0.0))
                     )
             }
             .buttonStyle(.plain)
