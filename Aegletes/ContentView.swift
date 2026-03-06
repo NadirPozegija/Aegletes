@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/5/26 - Revision 18
+// Edited on 3/5/26 - Revision 20
 //
 
 import SwiftUI
@@ -44,6 +44,7 @@ struct ContentView: View {
 
                 // Bottom controls
                 VStack {
+                    // Wheels row (fixed height to keep panel static)
                     HStack(alignment: .top) {
                         // ISO picker
                         paramPicker(
@@ -102,6 +103,7 @@ struct ContentView: View {
                             }
                         }
                     }
+                    .frame(height: 200)  // static height for wheels + optional locks
 
                     // Exposure mode selector: Light Meter vs Manual
                     HStack {
@@ -135,10 +137,10 @@ struct ContentView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
                 .padding(.bottom, 8)
-                .background(Color.black.opacity(0.6)) // solid dark panel extended to bottom
+                .background(Color.black.opacity(0.6)) // solid dark panel, extends to bottom
                 .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 4)
             }
-            .padding(.bottom, 0) // no gap at the bottom
+            .padding(.bottom, 0)
             .zIndex(1)
         }
     }
@@ -165,7 +167,7 @@ struct ContentView: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.wheel)
-                .frame(width: 90, height: 150)
+                .frame(width: 90, height: 170)  // slightly taller wheels
 
                 // Center outline band (no fill)
                 RoundedRectangle(cornerRadius: 8)
@@ -173,7 +175,7 @@ struct ContentView: View {
                     .frame(height: 32)
             }
 
-            // Lock icon button
+            // Lock icon button (Light Meter mode only)
             if showLock {
                 Button(action: onLockToggle) {
                     Image(systemName: locked ? "lock.fill" : "lock.open")
