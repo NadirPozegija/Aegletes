@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/5/26 - Revision 12
+// Edited on 3/5/26 - Revision 15
 //
 
 import SwiftUI
@@ -36,14 +36,9 @@ struct ContentView: View {
 
             // UI overlays
             VStack {
-                // EV Δ at top-center
-                Text(String(format: "EV Δ = %+0.1f", vm.evDeltaValue))
-                    .font(.headline)
-                    .padding(8)
-                    .background(Color.black.opacity(0.6))
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
-                    .padding()
+                // EV Δ badge at top-center
+                EVBadge(evDelta: vm.evDeltaValue)
+                    .padding(.top, 8)
 
                 Spacer()
 
@@ -109,7 +104,7 @@ struct ContentView: View {
                     }
                     .frame(height: 180)
 
-                    // Exposure mode selector: light meter (auto) vs full manual exposure
+                    // Exposure mode selector: Light Meter vs Manual
                     HStack {
                         Spacer()
 
@@ -129,6 +124,7 @@ struct ContentView: View {
                                 Text("Manual").tag(1)
                             }
                             .pickerStyle(.segmented)
+                            .tint(vm.manualMode ? Color.orange : Color.accentColor)
                             .frame(maxWidth: 260)
                         }
 
@@ -137,8 +133,13 @@ struct ContentView: View {
                     .padding(.horizontal)
                     .padding(.bottom, 8)
                 }
-                .background(Color.black.opacity(0.6))
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+                .background(.ultraThinMaterial) // glassy panel
+                .cornerRadius(18)
+                .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 4)
             }
+            .padding(.bottom, 12)
             .zIndex(1)
         }
     }
@@ -150,27 +151,70 @@ struct ContentView: View {
                              showLock: Bool,
                              onLockToggle: @escaping () -> Void) -> some View {
 
-        VStack {
-            Text(title).foregroundColor(.white)
-            Picker("", selection: selection) {
-                ForEach(values.indices, id: \.self) { idx in
-                    Text(values[idx]).tag(idx)
-                }
-            }
-            .labelsHidden()
-            .pickerStyle(.wheel)
-
-            if showLock {
-                Button(locked ? "Unlock" : "Lock") {
-                    onLockToggle()
-                }
+        VStack(spacing: 6) {
+            // Caption label
+            Text(title)
+                .foregroundColor(.white.opacity(0.8))
                 .font(.caption)
-                .padding(4)
-                .background(locked ? Color.red : Color.gray)
-                .foregroundColor(.white)
-                .cornerRadius(6)
+
+            // Wheel picker with center highlight
+            ZStack {
+                Picker("", selection: selection) {
+                    ForEach(values.indices, id: \.self) { idx in
+                        Text(values[idx]).tag(idx)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.wheel)
+                .frame(width: 90, height: 150)
+
+                // Center highlight band
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.white.opacity(0.16))
+                    .frame(height: 32)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                    )
+            }
+
+            // Lock icon button
+            if showLock {
+                Button(action: onLockToggle) {
+                    Image(systemName: locked ? "lock.fill" : "lock.open")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(.white)
+                        .padding(6)
+                        .background(
+                            Circle().fill(locked ? Color.red : Color.gray)
+                        )
+                }
             }
         }
         .padding(.horizontal, 4)
+    }
+}
+
+// MARK: - EV Badge
+
+private struct EVBadge: View {
+    let evDelta: Double
+
+    var body: some View {
+        let text = String(format: "EV Δ = %+0.1f", evDelta)
+
+        Text(text)
+            .font(.system(size: 17, weight: .semibold, design: .monospaced))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(Color.black.opacity(0.45))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(Color.white.opacity(0.35), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 2)
     }
 }
