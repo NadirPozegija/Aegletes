@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/7/26 - Y-plane brightness histogram
+// Edited on 3/7/26 - Metal-based brightness histogram
 //
 
 import AVFoundation
@@ -28,7 +28,7 @@ final class CameraFeed: NSObject,
     // Processed frame for preview (after Core Image exposure adjust)
     @Published var previewFrame: CGImage?
 
-    // Brightness histogram bins (0..1 fractions, 256 bins, 0 = black, 255 = white)
+    // Brightness histogram bins (0..1 fractions, 256 bins, dark → bright)
     @Published var histogramBins: [CGFloat] = Array(repeating: 0, count: 256)
 
     private let session = AVCaptureSession()
@@ -37,13 +37,11 @@ final class CameraFeed: NSObject,
     private let videoOutput = AVCaptureVideoDataOutput()
     private let ciContext = CIContext(options: nil)
 
+    // Metal-based histogram computer
+    private let metalHistogram = MetalHistogram(minUpdateInterval: 0.1)
+
     // Virtual EV offset to apply in manual mode (set by ViewModel)
     var previewEVOffset: Double = 0.0
-
-    // Histogram configuration (Y-plane histogram)
-    private let histogramBinCount = 256
-    private let histogramMinInterval: CFTimeInterval = 0.1
-    private var lastHistogramTime: CFTimeInterval = 0
 
     // Track whether we're using the iPhone's AE as a light meter or full manual control
     private(set) var mode: ExposureControlMode = .auto
@@ -86,13 +84,13 @@ final class CameraFeed: NSObject,
             // If configuration fails, just leave defaults
         }
 
-        // Request a YUV 4:2:0 buffer so we can use the Y plane for histogram
+        // Request BGRA so we can easily build both CIImage and Metal textures
         videoOutput.videoSettings = [
             kCVPixelBufferPixelFormatTypeKey as String:
-                kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+                kCVPixelFormatType_32BGRA
         ]
 
-        // Video output for live EV metering + Core Image preview
+        // Video output for live EV metering + Core Image preview + Metal histogram
         videoOutput.setSampleBufferDelegate(self, queue: queue)
         videoOutput.alwaysDiscardsLateVideoFrames = true
         if session.canAddOutput(videoOutput) {
@@ -179,7 +177,7 @@ final class CameraFeed: NSObject,
         }
     }
 
-    // MARK: - Live metering + Core Image exposure simulation + histogram
+    // MARK: - Live metering + Core Image exposure simulation + Metal histogram
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
@@ -203,11 +201,9 @@ final class CameraFeed: NSObject,
         var image = CIImage(cvPixelBuffer: pixelBuffer)
             .oriented(.right)
 
-        // 3) Compute brightness histogram from Y plane (throttled)
-        let now = CACurrentMediaTime()
-        if now - lastHistogramTime >= histogramMinInterval,
-           let bins = computeLumaHistogram(from: pixelBuffer) {
-            lastHistogramTime = now
+        // 3) Compute brightness histogram via Metal (throttled)
+        if let metalHistogram = metalHistogram,
+           let bins = metalHistogram.updateHistogramIfNeeded(from: pixelBuffer) {
             DispatchQueue.main.async {
                 self.histogramBins = bins
             }
@@ -237,41 +233,5 @@ final class CameraFeed: NSObject,
             self.sceneEV100 = evScene
             self.previewFrame = cg
         }
-    }
-
-    /// Compute a 256-bin brightness histogram from the Y plane of a 420f buffer.
-    /// Bin index 0 = luma 0 (pure black), bin 255 = luma 255 (pure white).
-    private func computeLumaHistogram(from pixelBuffer: CVPixelBuffer) -> [CGFloat]? {
-        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
-
-        // Plane 0 is luminance (Y) for 420 bi-planar buffers
-        guard CVPixelBufferGetPlaneCount(pixelBuffer) > 0,
-              let baseAddress = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0)
-        else {
-            return nil
-        }
-
-        let width = CVPixelBufferGetWidthOfPlane(pixelBuffer, 0)
-        let height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 0)
-        let bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0)
-
-        var counts = [Int](repeating: 0, count: histogramBinCount)
-        var totalPixels = 0
-
-        let buffer = baseAddress.assumingMemoryBound(to: UInt8.self)
-        for y in 0..<height {
-            let row = buffer.advanced(by: y * bytesPerRow)
-            for x in 0..<width {
-                let value = Int(row[x]) // 0..255 luma
-                counts[value] += 1
-                totalPixels += 1
-            }
-        }
-
-        guard totalPixels > 0 else { return nil }
-
-        let totalF = Double(totalPixels)
-        return counts.map { CGFloat(Double($0) / totalF) }
     }
 }
