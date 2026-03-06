@@ -3,10 +3,11 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/5/26 - Revision 25
+// Edited on 3/5/26 - Revision 26
 //
 
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @StateObject private var vm = AegletesViewModel()
@@ -178,7 +179,10 @@ struct ContentView: View {
 
             // Lock icon button (Light Meter mode only)
             if showLock {
-                Button(action: onLockToggle) {
+                Button(action: {
+                    Haptics.lockToggled()
+                    onLockToggle()
+                }) {
                     Image(systemName: locked ? "lock.fill" : "lock.open")
                         .font(.caption2.weight(.semibold))
                         .foregroundColor(.white)
@@ -226,7 +230,10 @@ private struct ModeSelector: View {
         HStack(spacing: 0) {
             // Light Meter segment
             Button {
-                isManual = false
+                if isManual {
+                    isManual = false
+                    Haptics.modeChanged()
+                }
             } label: {
                 Text("Light Meter")
                     .font(.system(size: 14, weight: .medium))
@@ -242,7 +249,10 @@ private struct ModeSelector: View {
 
             // Manual segment
             Button {
-                isManual = true
+                if !isManual {
+                    isManual = true
+                    Haptics.modeChanged()
+                }
             } label: {
                 Text("Manual")
                     .font(.system(size: 14, weight: .medium))
@@ -261,5 +271,19 @@ private struct ModeSelector: View {
             Capsule()
                 .stroke(Color.white.opacity(0.4), lineWidth: 1)
         )
+    }
+}
+
+// MARK: - Haptics
+
+private enum Haptics {
+    static func modeChanged() {
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+    }
+
+    static func lockToggled() {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
     }
 }
