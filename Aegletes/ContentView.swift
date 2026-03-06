@@ -3,17 +3,22 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/6/26 - Revision 29 (Histogram layout + EV badge state)
+// Edited on 3/7/26 - Revision 30 (ISO 1/3-stop list + styled ISO picker)
 //
 
 import SwiftUI
 import UIKit
 
+// Standard ISO ticks to style specially in the wheel
+private func isStandardISO(_ value: Double) -> Bool {
+    let standard: Set<Double> = [12, 25, 50, 100, 200, 400, 800, 1600, 3200, 6400]
+    return standard.contains(value)
+}
+
 struct ContentView: View {
     @StateObject private var vm = AegletesViewModel()
     @State private var baseZoom: CGFloat = 1.0
     @GestureState private var pinchScale: CGFloat = 1.0
-
     @State private var showHistogram = false
 
     var body: some View {
@@ -64,15 +69,61 @@ struct ContentView: View {
                 VStack {
                     // Wheels row with fixed height (panel stays static)
                     HStack(alignment: .top) {
-                        // ISO picker
-                        paramPicker(
-                            title: "ISO",
-                            values: isoValues.map { String(Int($0)) },
-                            selection: $vm.exposure.isoIndex,
-                            locked: vm.locks.iso,
-                            showLock: !vm.manualMode,
-                            onLockToggle: { vm.locks.iso.toggle() }
-                        )
+                        // ISO picker (with styled "standard" ISO values)
+                        let baseWheelHeight: CGFloat = 150
+                        let lockTrade: CGFloat = 15
+                        let wheelHeight = !vm.manualMode
+                            ? (baseWheelHeight - lockTrade)   // shrink up a bit for locks
+                            : (baseWheelHeight + lockTrade)   // expand down into lock space
+
+                        VStack(spacing: 6) {
+                            Text("ISO")
+                                .foregroundColor(.white.opacity(0.8))
+                                .font(.system(size: 16, weight: .semibold, design: .serif))
+
+                            ZStack {
+                                Picker("", selection: $vm.exposure.isoIndex) {
+                                    ForEach(isoValues.indices, id: \.self) { idx in
+                                        let value = isoValues[idx]
+                                        let label = String(Int(value))
+
+                                        Text(label)
+                                            .fontWeight(isStandardISO(value) ? .bold : .regular)
+                                            .foregroundColor(
+                                                isStandardISO(value)
+                                                ? .white
+                                                : .white.opacity(0.6)
+                                            )
+                                            .tag(idx)
+                                    }
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.wheel)
+                                .frame(width: 90, height: wheelHeight)
+
+                                // Center outline band (no fill)
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                                    .frame(height: 32)
+                            }
+
+                            // Lock icon button (Light Meter mode only)
+                            if !vm.manualMode {
+                                Button(action: {
+                                    Haptics.lockToggled()
+                                    vm.locks.iso.toggle()
+                                }) {
+                                    Image(systemName: vm.locks.iso ? "lock.fill" : "lock.open")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundColor(.white)
+                                        .padding(6)
+                                        .background(
+                                            Circle().fill(vm.locks.iso ? Color.red : Color.gray)
+                                        )
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 4)
                         .onChange(of: vm.exposure.isoIndex) { _, _ in
                             if vm.manualMode {
                                 vm.updatePreviewEVOffsetIfNeeded()
@@ -126,7 +177,6 @@ struct ContentView: View {
                     // Exposure mode selector: Light Meter vs Manual
                     HStack {
                         Spacer()
-
                         VStack(spacing: 6) {
                             ModeSelector(
                                 isManual: Binding(
@@ -140,7 +190,6 @@ struct ContentView: View {
                                 .foregroundColor(.white)
                                 .font(.caption)
                         }
-
                         Spacer()
                     }
                     .padding(.top, 4)
@@ -158,18 +207,20 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Generic parameter picker (aperture & shutter)
+
     private func paramPicker(title: String,
                              values: [String],
                              selection: Binding<Int>,
                              locked: Bool,
                              showLock: Bool,
                              onLockToggle: @escaping () -> Void) -> some View {
-
         // Base wheel height and how much to trade with the lock space
         let baseWheelHeight: CGFloat = 150
         let lockTrade: CGFloat = 15
-        let wheelHeight = showLock ? (baseWheelHeight - lockTrade)   // shrink up a bit for locks
-                                   : (baseWheelHeight + lockTrade)   // expand down into lock space
+        let wheelHeight = showLock
+            ? (baseWheelHeight - lockTrade)   // shrink up a bit for locks
+            : (baseWheelHeight + lockTrade)   // expand down into lock space
 
         return VStack(spacing: 6) {
             // Title: fixed position, 16pt, semibold, serif
@@ -212,101 +263,97 @@ struct ContentView: View {
         }
         .padding(.horizontal, 4)
     }
-}
 
-// MARK: - EV Badge
+    // MARK: - EV Badge
+    private struct EVBadge: View {
+        let evDelta: Double
+        let isHistogramActive: Bool
 
-private struct EVBadge: View {
-    let evDelta: Double
-    let isHistogramActive: Bool
+        var body: some View {
+            let text = String(format: "EV Δ = %+0.1f", evDelta)
+            Text(text)
+                .font(.system(size: 17, weight: .semibold, design: .monospaced))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(Color.black.opacity(0.45))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(
+                            isHistogramActive
+                            ? Color.green.opacity(0.9)
+                            : Color.white.opacity(0.35),
+                            lineWidth: 1.5
+                        )
+                )
+                .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 2)
+        }
+    }
 
-    var body: some View {
-        let text = String(format: "EV Δ = %+0.1f", evDelta)
+    // MARK: - Mode Selector (custom tinted segments)
+    private struct ModeSelector: View {
+        @Binding var isManual: Bool
 
-        Text(text)
-            .font(.system(size: 17, weight: .semibold, design: .monospaced))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
+        var body: some View {
+            HStack(spacing: 0) {
+                // Light Meter segment
+                Button {
+                    if isManual {
+                        isManual = false
+                        Haptics.modeChanged()
+                    }
+                } label: {
+                    Text("Light Meter")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule()
+                                .fill(Color.orange.opacity(isManual ? 0.0 : 0.35))
+                        )
+                }
+                .buttonStyle(.plain)
+
+                // Manual segment
+                Button {
+                    if !isManual {
+                        isManual = true
+                        Haptics.modeChanged()
+                    }
+                } label: {
+                    Text("Manual")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule()
+                                .fill(Color.blue.opacity(isManual ? 0.35 : 0.0))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(2)
             .background(
                 Capsule()
-                    .fill(Color.black.opacity(0.45))
+                    .stroke(Color.white.opacity(0.4), lineWidth: 1)
             )
-            .overlay(
-                Capsule()
-                    .stroke(
-                        isHistogramActive
-                        ? Color.green.opacity(0.9)
-                        : Color.white.opacity(0.35),
-                        lineWidth: 1.5
-                    )
-            )
-            .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 2)
-    }
-}
-
-// MARK: - Mode Selector (custom tinted segments)
-
-private struct ModeSelector: View {
-    @Binding var isManual: Bool
-
-    var body: some View {
-        HStack(spacing: 0) {
-            // Light Meter segment
-            Button {
-                if isManual {
-                    isManual = false
-                    Haptics.modeChanged()
-                }
-            } label: {
-                Text("Light Meter")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-                    .background(
-                        Capsule()
-                            .fill(Color.orange.opacity(isManual ? 0.0 : 0.35))
-                    )
-            }
-            .buttonStyle(.plain)
-
-            // Manual segment
-            Button {
-                if !isManual {
-                    isManual = true
-                    Haptics.modeChanged()
-                }
-            } label: {
-                Text("Manual")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-                    .background(
-                        Capsule()
-                            .fill(Color.blue.opacity(isManual ? 0.35 : 0.0))
-                    )
-            }
-            .buttonStyle(.plain)
         }
-        .padding(2)
-        .background(
-            Capsule()
-                .stroke(Color.white.opacity(0.4), lineWidth: 1)
-        )
-    }
-}
-
-// MARK: - Haptics
-
-private enum Haptics {
-    static func modeChanged() {
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.impactOccurred()
     }
 
-    static func lockToggled() {
-        let generator = UIImpactFeedbackGenerator(style: .light)
-        generator.impactOccurred()
+    // MARK: - Haptics
+    private enum Haptics {
+        static func modeChanged() {
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.impactOccurred()
+        }
+
+        static func lockToggled() {
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.impactOccurred()
+        }
     }
 }
