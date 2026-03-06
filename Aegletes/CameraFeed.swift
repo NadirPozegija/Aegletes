@@ -120,7 +120,7 @@ final class CameraFeed: NSObject,
 
         // 2) Build CIImage from pixel buffer and orient to portrait
         var image = CIImage(cvPixelBuffer: pixelBuffer)
-            .oriented(.right)   // adjust if needed: .left or remove
+            .oriented(.right)   // adjusted from landcape to portrait
 
         // 3) Apply EV offset from the view model (manual mode only) with nonlinear mapping
         let rawOffset = previewEVOffset
@@ -128,8 +128,8 @@ final class CameraFeed: NSObject,
         // Nonlinear mapping: compress large EVs, keep small changes responsive
         // - k controls how quickly it compresses
         // - maxEV is the maximum effective adjustment in the filter
-        let k = 0.25         // tuning parameter: higher = stronger compression
-        let maxEV = 6.0     // clamp effective EV to about ±3 stops
+        let k = 0.20        // tuning parameter: higher = stronger compression
+        let maxEV = 8.0     // clamp effective EV to about ±8 stops
 
         let mappedOffset: Double
         if abs(rawOffset) < 1e-6 {
