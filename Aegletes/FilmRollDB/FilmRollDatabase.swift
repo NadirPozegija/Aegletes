@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/7/26.
-// Edited on 3/8/26 - FilmType support, notes field, JSON DB, and store
+// Edited on 3/8/26 - FilmType, notes, JSON DB, store, and camera list support
 //
 
 import Foundation
@@ -59,7 +59,7 @@ struct FilmRoll: Identifiable, Codable, Equatable {
     var effectiveISO: Double   // EI you actually rate it at
 
     // Camera metadata
-    var camera: String         // arbitrary user-entered string
+    var camera: String         // must come from cameraNames; defaults to "No camera"
 
     // Lifecycle
     var status: FilmRollStatus
@@ -125,7 +125,7 @@ struct FilmRollDatabase: Codable {
     var rolls: [FilmRoll] = []
 
     // User-entered camera names (for auto-complete / pickers)
-    private var cameraNameSet: Set<String> = []
+    private var cameraNameSet: Set<String> = ["No camera"]
 
     // MARK: - Option Catalogs (suggestions only)
 
@@ -241,25 +241,36 @@ struct FilmRollDatabase: Codable {
 
     // Rebuild camera name set from rolls if needed
     mutating func rebuildCameraNames() {
-        cameraNameSet = Set(
-            rolls
-                .map { $0.camera }
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-        )
+        cameraNameSet = ["No camera"]
+        for roll in rolls {
+            let trimmed = roll.camera.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                cameraNameSet.insert(trimmed)
+            }
+        }
     }
 
     // MARK: - Roll Management Helpers
 
     mutating func addRoll(_ roll: FilmRoll) {
-        rolls.append(roll)
-        registerCameraName(roll.camera)
+        var r = roll
+        let trimmedCamera = r.camera.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedCamera.isEmpty {
+            r.camera = "No camera"
+        }
+        rolls.append(r)
+        registerCameraName(r.camera)
     }
 
     mutating func updateRoll(_ roll: FilmRoll) {
-        if let idx = rolls.firstIndex(where: { $0.id == roll.id }) {
-            rolls[idx] = roll
-            registerCameraName(roll.camera)
+        var r = roll
+        let trimmedCamera = r.camera.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedCamera.isEmpty {
+            r.camera = "No camera"
+        }
+        if let idx = rolls.firstIndex(where: { $0.id == r.id }) {
+            rolls[idx] = r
+            registerCameraName(r.camera)
         }
     }
 
@@ -378,6 +389,10 @@ final class FilmRollStore: ObservableObject {
         var roll = database.rolls[idx]
         roll.updateStatus(to: newStatus, at: date)
         database.updateRoll(roll)
+    }
+
+    func addCameraName(_ name: String) {
+        database.registerCameraName(name)
     }
 
     /// Force a save immediately (e.g. on app background).
