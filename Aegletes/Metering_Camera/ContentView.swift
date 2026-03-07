@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/7/26 - Revision 30 (ISO 1/3-stop list + styled ISO picker)
+// Edited on 3/7/26 - Revision 32 (film DB switch button in header)
 //
 
 import SwiftUI
@@ -20,6 +20,9 @@ struct ContentView: View {
     @State private var baseZoom: CGFloat = 1.0
     @GestureState private var pinchScale: CGFloat = 1.0
     @State private var showHistogram = false
+
+    /// Callback to switch to Film DB screen (set by RootView).
+    var onShowFilmDB: (() -> Void)? = nil
 
     var body: some View {
         ZStack {
@@ -44,13 +47,33 @@ struct ContentView: View {
 
             // UI overlays
             VStack {
-                // EV Δ badge at top-center (tap to toggle histogram)
-                EVBadge(evDelta: vm.evDeltaValue,
-                        isHistogramActive: showHistogram)
-                    .padding(.top, 8)
-                    .onTapGesture {
-                        showHistogram.toggle()
+                // Top row: EV badge centered + folder icon on the right
+                HStack(alignment: .center) {
+                    Spacer()
+
+                    EVBadge(evDelta: vm.evDeltaValue,
+                            isHistogramActive: showHistogram)
+                        .onTapGesture {
+                            showHistogram.toggle()
+                        }
+
+                    Spacer()
+
+                    Button(action: {
+                        onShowFilmDB?()
+                    }) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(8)
+                            .background(
+                                Circle()
+                                    .fill(Color.black.opacity(0.45))
+                            )
                     }
+                    .padding(.trailing, 12)
+                }
+                .padding(.top, 8)
 
                 Spacer()
 
