@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/7/26.
-// Edited on 3/8/26 - Custom top bar, Manage Cameras, bulk # of Rolls create/update, stacked film UI
+// Edited on 3/8/26 - Custom top bar, Manage Cameras, bulk # of Rolls create/update, HeroView stacks with ZStack
 //
 
 import SwiftUI
@@ -93,7 +93,7 @@ struct FilmDBRootView: View {
 
                 Divider()
 
-                // Main content: film stacks list
+                // Main content: film stacks list with HeroView for multi-roll stacks
                 FilmStackListView()
             }
             .navigationBarHidden(true)
@@ -123,10 +123,14 @@ struct FilmDBRootView: View {
         let rolls: [FilmRoll]
     }
 
-    // MARK: - Stacked List View
+    // MARK: - Stacked List View (HeroView expand/collapse for multi-roll stacks)
 
     struct FilmStackListView: View {
         @EnvironmentObject var filmStore: FilmRollStore
+
+        @State private var expandedStackIDs: Set<FilmIdentity.ID> = []
+        @State private var rollBeingEdited: FilmRoll?
+        @State private var showingEditSheet: Bool = false
 
         var body: some View {
             List {
@@ -139,18 +143,87 @@ struct FilmDBRootView: View {
                     }
                 } else {
                     ForEach(stacks, id: \.identity.id) { stack in
-                        NavigationLink(destination: FilmStackDetailView(identity: stack.identity)) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                // Title: Manufacturer + Stock
-                                Text(heading(for: stack.identity))
-                                    .font(.headline)
+                        if stack.rolls.count > 1 {
+                            // Multi-roll: HeroView that expands/collapses to show entries
+                            Section {
+                                // Hero row (ZStack), with a single swipe action to delete the entire stack
+                                FilmStackHeroView(
+                                    identity: stack.identity,
+                                    rolls: stack.rolls,
+                                    isExpanded: expandedStackIDs.contains(stack.identity.id)
+                                )
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if expandedStackIDs.contains(stack.identity.id) {
+                                        expandedStackIDs.remove(stack.identity.id)
+                                    } else {
+                                        expandedStackIDs.insert(stack.identity.id)
+                                    }
+                                }
+                                .swipeActions(edge: .trailing) {
+                                    Button(role: .destructive) {
+                                        // Delete the entire stack (all rolls of this identity)
+                                        expandedStackIDs.remove(stack.identity.id)
+                                        let all = filmStore.rolls.filter { $0.filmIdentity == stack.identity }
+                                        all.forEach { filmStore.removeRoll($0) }
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }
+                                }
 
-                                // Subtitle: film type, format, ISO + counts / status
-                                Text(subheading(for: stack.identity, rolls: stack.rolls))
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
+                                // Expanded entries, sequentially named, each with its own swipe action
+                                if expandedStackIDs.contains(stack.identity.id) {
+                                    ForEach(Array(stack.rolls.enumerated()), id: \.element.id) { index, roll in
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("Roll \(index + 1)")
+                                                    .font(.subheadline.weight(.semibold))
+                                                rollSubheadline(for: roll)
+                                            }
+                                            Spacer()
+                                        }
+                                        .contentShape(Rectangle())
+                                        .onTapGesture {
+                                            rollBeingEdited = roll
+                                            showingEditSheet = true
+                                        }
+                                        .swipeActions(edge: .trailing) {
+                                            Button(role: .destructive) {
+                                                filmStore.removeRoll(roll)
+                                            } label: {
+                                                Image(systemName: "trash")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else if let roll = stack.rolls.first {
+                            // Single roll: normal row that goes straight to detail
+                            NavigationLink(destination: FilmRollDetailView(roll: roll)) {
+                                HStack(alignment: .center, spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(heading(for: stack.identity))
+                                            .font(.headline)
+
+                                        rollSubheadline(for: roll)
+                                    }
+
+                                    Spacer()
+                                }
                             }
                         }
+                    }
+                }
+            }
+            .sheet(isPresented: $showingEditSheet, onDismiss: {
+                rollBeingEdited = nil
+            }) {
+                if let roll = rollBeingEdited {
+                    NavigationStack {
+                        FilmRollEditView(roll: roll) { _ in
+                            showingEditSheet = false
+                        }
+                        .environmentObject(filmStore)
                     }
                 }
             }
@@ -193,20 +266,157 @@ struct FilmDBRootView: View {
             return components.joined(separator: " ")
         }
 
-        private func subheading(for identity: FilmIdentity, rolls: [FilmRoll]) -> String {
+        // MARK: - Subheadline builder with SF Symbols
+
+        @ViewBuilder
+        private func rollSubheadline(for roll: FilmRoll) -> some View {
+            HStack(spacing: 4) {
+                // Format
+                Text(roll.format.rawValue)
+
+                Text("•")
+
+                // Film Type + icon (rainbow for Color, square.tophalf.filled for B&W)
+                HStack(spacing: 2) {
+                    Text(roll.filmType.rawValue)
+                    switch roll.filmType {
+                    case .color:
+                        Image(systemName: "rainbow")
+                    case .bw:
+                        Image(systemName: "square.tophalf.filled")
+                    case .slide:
+                        EmptyView() // no specific icon defined
+                    }
+                }
+
+                Text("•")
+
+                // ISO (Box ISO)
+                Text("ISO \(Int(roll.boxISO))")
+
+                Text("•")
+
+                // Status + icon
+                HStack(spacing: 2) {
+                    Text(roll.status.rawValue)
+                    if let statusSymbol = statusSymbolName(for: roll.status) {
+                        Image(systemName: statusSymbol)
+                    }
+                }
+
+                // Optional camera + icon
+                let cam = roll.camera.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !cam.isEmpty {
+                    Text("•")
+                    HStack(spacing: 2) {
+                        Text(cam)
+                        Image(systemName: "camera.fill")
+                    }
+                }
+            }
+            .font(.subheadline)
+            .foregroundColor(.secondary)
+        }
+
+        private func statusSymbolName(for status: FilmRollStatus) -> String? {
+            switch status {
+            case .inStorage:
+                return "shippingbox.fill"
+            case .loaded:
+                return "camera.circle.fill"
+            case .finished:
+                return "flag.checkered"      // closest to "finish flag"
+            case .developed:
+                return "testtube.2"
+            case .scanning:
+                return "testtube.2"          // treat as in-process, same as developed
+            case .archived:
+                return "film.stack"
+            }
+        }
+    }
+
+    // MARK: - Film Stack HeroView (for multi-roll stacks, ZStack of row previews)
+
+    struct FilmStackHeroView: View {
+        let identity: FilmIdentity
+        let rolls: [FilmRoll]
+        let isExpanded: Bool
+
+        var body: some View {
+            let displayCount = min(rolls.count, 3)
+
+            ZStack(alignment: .topLeading) {
+                ForEach(0..<displayCount, id: \.self) { index in
+                    heroRow(showText: index == displayCount - 1)
+                        .offset(y: CGFloat(index * 4))
+                        .opacity(index == displayCount - 1 ? 1.0 : 0.85)
+                }
+            }
+        }
+
+        private func heroRow(showText: Bool) -> some View {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.gray.opacity(0.15))
+
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.gray.opacity(0.4), lineWidth: 1)
+
+                if showText {
+                    HStack(alignment: .center, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            // Title (based on film identity)
+                            Text(heroTitle)
+                                .font(.headline)
+
+                            // Subtitle
+                            Text(heroSubtitle)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+
+                        Spacer()
+
+                        Text("×\(rolls.count)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.secondary)
+
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                }
+            }
+        }
+
+        private var heroTitle: String {
+            let m = identity.manufacturer.trimmingCharacters(in: .whitespacesAndNewlines)
+            let s = identity.stock.trimmingCharacters(in: .whitespacesAndNewlines)
+            let components = [m, s].filter { !$0.isEmpty }
+            if components.isEmpty {
+                return "Film Roll"
+            }
+            return components.joined(separator: " ")
+        }
+
+        private var heroSubtitle: String {
             var parts: [String] = [
-                identity.filmType.rawValue,
                 identity.format.rawValue,
+                identity.filmType.rawValue,
                 "ISO \(Int(identity.boxISO))"
             ]
 
             let total = rolls.count
             parts.append("• \(total) roll\(total == 1 ? "" : "s")")
 
-            // Status breakdown
             let inStorage = rolls.filter { $0.status == .inStorage }.count
             let loaded = rolls.filter { $0.status == .loaded }.count
-            let finishedLike = rolls.filter { $0.status == .finished || $0.status == .developed || $0.status == .scanning || $0.status == .archived }.count
+            let finishedLike = rolls.filter {
+                $0.status == .finished || $0.status == .developed || $0.status == .scanning || $0.status == .archived
+            }.count
 
             var statusParts: [String] = []
             if inStorage > 0 {
@@ -223,11 +433,11 @@ struct FilmDBRootView: View {
                 parts.append("• " + statusParts.joined(separator: ", "))
             }
 
-            return parts.joined(separator: " ")
+            return parts.joined(separator: " • ")
         }
     }
 
-    // MARK: - Film Stack Detail (drill into rolls of same film)
+    // MARK: - Film Stack Detail (still available via navigation if needed)
 
     struct FilmStackDetailView: View {
         @EnvironmentObject var filmStore: FilmRollStore
@@ -279,7 +489,6 @@ struct FilmDBRootView: View {
 
         var body: some View {
             Form {
-                // Optional Notes section
                 if !roll.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Section(header: Text("Notes")) {
                         Text(roll.notes)
@@ -361,7 +570,6 @@ struct FilmDBRootView: View {
                 Section(header: Text("Film")) {
                     TextField("Notes", text: $notes, axis: .vertical)
 
-                    // Manufacturer: picker + custom text
                     Picker("Manufacturer", selection: $manufacturer) {
                         ForEach(FilmRollDatabase.manufacturerOptions, id: \.self) { m in
                             Text(m).tag(m)
@@ -369,7 +577,6 @@ struct FilmDBRootView: View {
                     }
                     TextField("Custom manufacturer", text: $manufacturer)
 
-                    // Stock: suggestions + custom text
                     if let stocks = FilmRollDatabase.stockCatalog[manufacturer], !stocks.isEmpty {
                         Picker("Stock", selection: $stock) {
                             ForEach(stocks, id: \.self) { s in
@@ -479,7 +686,6 @@ struct FilmDBRootView: View {
                 Section(header: Text("Film")) {
                     TextField("Notes", text: $notes, axis: .vertical)
 
-                    // Manufacturer: picker + custom text
                     Picker("Manufacturer", selection: $manufacturer) {
                         ForEach(FilmRollDatabase.manufacturerOptions, id: \.self) { m in
                             Text(m).tag(m)
@@ -487,7 +693,6 @@ struct FilmDBRootView: View {
                     }
                     TextField("Custom manufacturer", text: $manufacturer)
 
-                    // Stock: suggestions + custom text
                     if let stocks = FilmRollDatabase.stockCatalog[manufacturer], !stocks.isEmpty {
                         Picker("Stock", selection: $stock) {
                             ForEach(stocks, id: \.self) { s in
@@ -522,7 +727,6 @@ struct FilmDBRootView: View {
                 }
             }
             .onAppear {
-                // Ensure camera is valid, even though hidden in UI
                 if filmStore.cameraNames.isEmpty == false {
                     if !filmStore.cameraNames.contains(camera) {
                         camera = filmStore.cameraNames.first ?? "No camera"
@@ -531,7 +735,6 @@ struct FilmDBRootView: View {
                     camera = "No camera"
                 }
 
-                // Initialize # of Rolls from current group count
                 let identity = FilmIdentity(
                     manufacturer: manufacturer.trimmingCharacters(in: .whitespacesAndNewlines),
                     stock: stock.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -562,7 +765,6 @@ struct FilmDBRootView: View {
             let trimmedStock = stock.trimmingCharacters(in: .whitespacesAndNewlines)
             let trimmedCamera = camera.trimmingCharacters(in: .whitespacesAndNewlines)
 
-            // 1) Update this roll
             let updated = FilmRoll(
                 id: roll.id,
                 notes: trimmedNotes,
@@ -580,7 +782,6 @@ struct FilmDBRootView: View {
             )
             filmStore.updateRoll(updated)
 
-            // 2) Adjust group size (same film identity)
             let identity = updated.filmIdentity
 
             let allRollsForIdentity = filmStore.rolls.filter { $0.filmIdentity == identity }
@@ -589,7 +790,6 @@ struct FilmDBRootView: View {
             let targetCount = max(1, requested)
 
             if targetCount > currentCount {
-                // Need to add extra rolls
                 let extra = targetCount - currentCount
                 for _ in 0..<extra {
                     let newRoll = FilmRoll(
@@ -606,7 +806,6 @@ struct FilmDBRootView: View {
                     filmStore.addRoll(newRoll)
                 }
             } else if targetCount < currentCount {
-                // Need to remove some rolls (prefer inStorage, never delete the edited roll)
                 let needed = currentCount - targetCount
                 if needed > 0 {
                     let candidates = filmStore.rolls.filter {
@@ -636,7 +835,6 @@ struct FilmDBRootView: View {
         @State private var showingDeleteAlert: Bool = false
 
         var body: some View {
-            // Only show user-defined cameras, hide "No camera" from the list
             let visibleCameras = filmStore.cameraNames.filter { $0 != "No camera" }
 
             List {
@@ -693,7 +891,7 @@ struct FilmDBRootView: View {
         private func addCamera() {
             let trimmed = newCameraName.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return }
-            guard trimmed != "No camera" else { return } // reserve default name
+            guard trimmed != "No camera" else { return }
             guard !filmStore.cameraNames.contains(trimmed) else {
                 newCameraName = ""
                 return
@@ -709,7 +907,6 @@ struct FilmDBRootView: View {
                 let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
                 if trimmed.isEmpty { continue }
 
-                // Count how many rolls currently use this camera
                 let count = filmStore.rolls.filter {
                     $0.camera.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed
                 }.count
