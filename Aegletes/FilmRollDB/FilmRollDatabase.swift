@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/7/26.
-// Edited on 3/8/26 - FilmType, notes, JSON DB, store, and camera list support
+// Edited on 3/8/26 - FilmType, notes, JSON DB, store, camera list management, FilmIdentity
 //
 
 import Foundation
@@ -115,6 +115,28 @@ struct FilmRoll: Identifiable, Codable, Equatable {
         if newStatus == .archived, previous != .archived, dateScanned == nil {
             dateScanned = date
         }
+    }
+}
+
+// MARK: - Film Identity (for grouping "same film")
+
+struct FilmIdentity: Hashable {
+    let manufacturer: String
+    let stock: String
+    let filmType: FilmType
+    let format: FilmFormat
+    let boxISO: Double
+}
+
+extension FilmRoll {
+    var filmIdentity: FilmIdentity {
+        FilmIdentity(
+            manufacturer: manufacturer.trimmingCharacters(in: .whitespacesAndNewlines),
+            stock: stock.trimmingCharacters(in: .whitespacesAndNewlines),
+            filmType: filmType,
+            format: format,
+            boxISO: boxISO
+        )
     }
 }
 
@@ -283,6 +305,22 @@ struct FilmRollDatabase: Codable {
         removeRoll(withId: roll.id)
     }
 
+    /// Remove a camera name from the catalog and reassign any rolls using it to "No camera".
+    mutating func removeCameraName(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != "No camera" else { return }
+
+        // Reassign all rolls that used this camera to "No camera"
+        for idx in rolls.indices {
+            let rollCamera = rolls[idx].camera.trimmingCharacters(in: .whitespacesAndNewlines)
+            if rollCamera == trimmed {
+                rolls[idx].camera = "No camera"
+            }
+        }
+
+        rebuildCameraNames()
+    }
+
     // MARK: - Persistence (JSON file)
 
     /// Default URL for storing the film database JSON.
@@ -393,6 +431,10 @@ final class FilmRollStore: ObservableObject {
 
     func addCameraName(_ name: String) {
         database.registerCameraName(name)
+    }
+
+    func removeCameraName(_ name: String) {
+        database.removeCameraName(name)
     }
 
     /// Force a save immediately (e.g. on app background).

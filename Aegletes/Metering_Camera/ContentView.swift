@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/7/26 - Revision 32 (film DB switch button in header)
+// Edited on 3/8/26 - Centered EV Δ badge with folder icon on top row
 //
 
 import SwiftUI
@@ -47,31 +47,36 @@ struct ContentView: View {
 
             // UI overlays
             VStack {
-                // Top row: EV badge centered + folder icon on the right
-                HStack(alignment: .center) {
-                    Spacer()
-
-                    EVBadge(evDelta: vm.evDeltaValue,
-                            isHistogramActive: showHistogram)
-                        .onTapGesture {
-                            showHistogram.toggle()
-                        }
-
-                    Spacer()
-
-                    Button(action: {
-                        onShowFilmDB?()
-                    }) {
-                        Image(systemName: "folder")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(.white)
-                            .padding(8)
-                            .background(
-                                Circle()
-                                    .fill(Color.black.opacity(0.45))
-                            )
+                // Top row: EV badge perfectly centered, folder icon in top-right
+                ZStack {
+                    // Centered EV badge across full width
+                    HStack {
+                        Spacer()
+                        EVBadge(evDelta: vm.evDeltaValue,
+                                isHistogramActive: showHistogram)
+                            .onTapGesture {
+                                showHistogram.toggle()
+                            }
+                        Spacer()
                     }
-                    .padding(.trailing, 12)
+
+                    // Right-aligned folder icon (does not affect badge centering)
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            onShowFilmDB?()
+                        }) {
+                            Image(systemName: "folder")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(8)
+                                .background(
+                                    Circle()
+                                        .fill(Color.black.opacity(0.45))
+                                )
+                        }
+                        .padding(.trailing, 12)
+                    }
                 }
                 .padding(.top, 8)
 
@@ -288,6 +293,7 @@ struct ContentView: View {
     }
 
     // MARK: - EV Badge
+
     private struct EVBadge: View {
         let evDelta: Double
         let isHistogramActive: Bool
@@ -316,6 +322,7 @@ struct ContentView: View {
     }
 
     // MARK: - Mode Selector (custom tinted segments)
+
     private struct ModeSelector: View {
         @Binding var isManual: Bool
 
@@ -368,6 +375,7 @@ struct ContentView: View {
     }
 
     // MARK: - Haptics
+
     private enum Haptics {
         static func modeChanged() {
             let generator = UIImpactFeedbackGenerator(style: .medium)
