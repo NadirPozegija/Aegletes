@@ -4,8 +4,6 @@
 //
 // Main Film DB list: stacks, HeroView usage, expand/collapse
 //
-// Edited on 3/9/26 - Revision 3 - Expanded stack rows navigate to detail view.
-//
 
 import SwiftUI
 
@@ -17,8 +15,13 @@ struct FilmStack {
 struct FilmStackListView: View {
     @EnvironmentObject var filmStore: FilmRollStore
 
+    /// The rolls to display (already filtered/sorted by the caller).
+    let rolls: [FilmRoll]
+
     // UI state
     @State var expandedStackIDs: Set<FilmIdentity.ID> = []
+    @State var rollBeingEdited: FilmRoll?
+    @State var showingEditSheet: Bool = false
 
     // For generic status confirmation (non-loaded transitions)
     @State var pendingStatusRoll: FilmRoll?
@@ -32,7 +35,7 @@ struct FilmStackListView: View {
 
     var body: some View {
         List {
-            let stacks = buildStacks(from: filmStore.rolls)
+            let stacks = buildStacks(from: rolls)
 
             if stacks.isEmpty {
                 Text("No rolls yet. Use Add Roll to create your first entry.")

@@ -4,8 +4,8 @@
 //
 // Detail view, New Roll editor, Edit Roll editor (+ stack size logic)
 //
-// Edited on 3/9/26 - Revision 3 - Status dates in detail, editable dates in edit view,
-// and bottom "Update Status" button reusing FilmRollStore.updateStatus/loadRoll.
+// Edited on 3/9/26 - Revision 4 - Status dates in detail, editable dates in edit view,
+// bottom "Update Status" button with dynamic label/icon/tint, and preserve dateCreated on edits.
 //
 
 import SwiftUI
@@ -62,19 +62,28 @@ struct FilmRollDetailView: View {
                 }
             }
 
-            // Bottom "Update Status" button (mirrors swipe action behavior)
+            // Bottom "Update Status" button (mirrors swipe action intent/appearance)
             Section {
                 Button {
                     handleUpdateStatusTap()
                 } label: {
+                    let color = detailUpdateStatusTint(for: liveRoll.status)
+
                     HStack {
                         Spacer()
-                        Text("Update Status")
-                            .font(.headline)
+                        Image(systemName: detailUpdateStatusSymbol(for: liveRoll.status))
+                        Text(detailUpdateStatusTitle(for: liveRoll.status))
+                            .font(.title2)
                         Spacer()
                     }
+                    .padding(.vertical, 8)
+                    .background(color)
+                    .foregroundColor(.white)
+                    .cornerRadius(20)
                 }
+                .buttonStyle(.plain)
             }
+            .listRowBackground(Color.clear)
         }
         .navigationTitle(title(for: liveRoll))
         .navigationBarTitleDisplayMode(.inline)
@@ -200,9 +209,64 @@ struct FilmRollDetailView: View {
             selectedEffectiveISOForLoad = FilmRollDatabase.effectiveISOOptions.first ?? defaultISO
         }
     }
+
+    // MARK: - Detail Update Status button appearance
+
+    private func detailUpdateStatusTitle(for status: FilmRollStatus) -> String {
+        switch status {
+        case .inStorage:
+            return "Load Roll"
+        case .loaded:
+            return "Mark Finished"
+        case .finished:
+            return "Mark Developed"
+        case .developed:
+            return "Mark Scanning"
+        case .scanning:
+            return "Archive Roll"
+        case .archived:
+            return "Mark Scanning"
+        }
+    }
+
+    private func detailUpdateStatusSymbol(for status: FilmRollStatus) -> String {
+        // Mirror the swipe action mapping
+        switch status {
+        case .inStorage:
+            return "camera.circle.fill"
+        case .loaded:
+            return "flag.checkered"
+        case .finished:
+            return "testtube.2"
+        case .developed:
+            return "barcode.viewfinder"
+        case .scanning:
+            return "film.stack"
+        case .archived:
+            return "barcode.viewfinder"
+        }
+    }
+
+    private func detailUpdateStatusTint(for status: FilmRollStatus) -> Color {
+        // Mirror the swipe action tint mapping
+        switch status {
+        case .inStorage:
+            return .yellow
+        case .loaded:
+            return .green
+        case .finished:
+            return .blue
+        case .developed:
+            return .indigo
+        case .scanning:
+            return .red
+        case .archived:
+            return .indigo
+        }
+    }
 }
 
-// MARK: - New / Edit Views (unchanged except for dates)
+// MARK: - New / Edit Views
 
 struct FilmRollEditorView: View {
     @EnvironmentObject var filmStore: FilmRollStore
@@ -476,6 +540,7 @@ struct FilmRollEditView: View {
             effectiveISO: effectiveISO,
             camera: trimmedCamera,
             status: roll.status,
+            dateCreated: roll.dateCreated,   // preserve original creation date
             dateLoaded: dateLoaded,
             dateFinished: dateFinished,
             dateScanned: dateScanned

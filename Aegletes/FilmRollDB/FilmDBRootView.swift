@@ -9,11 +9,13 @@ import SwiftUI
 
 struct FilmDBRootView: View {
     @EnvironmentObject var filmStore: FilmRollStore
+
     /// Callback to return to the meter screen (set by RootView).
     let onBackToMeter: () -> Void
 
     @State private var showingNewRoll = false
     @State private var showingManageCameras = false
+    @State private var selectedSegment: Int = 1   // segment 1–5 for filtering
 
     var body: some View {
         NavigationStack {
@@ -80,13 +82,28 @@ struct FilmDBRootView: View {
                 }
                 .font(.subheadline.weight(.semibold))
                 .padding(.horizontal)
-                .padding(.vertical, 8)
+                .padding(.vertical, 4)
                 .background(Color(.systemBackground).opacity(0.95))
 
                 Divider()
 
+                // Header above the list
+                HStack {
+                    Text("Film Rolls")
+                        .font(.largeTitle).fontWeight(.bold)
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.top, 4)
+
+                // Segment selector bar (1–5)
+                FilmRollsSegmentSelector(selectedSegment: $selectedSegment)
+                    .padding(.horizontal)
+                    .padding(.top, 4)
+                    .padding(.bottom, 4)
+
                 // Main content: film stacks list with HeroView for multi-roll stacks
-                FilmStackListView()
+                FilteredFilmRollsListView(selectedSegment: selectedSegment)
             }
             .navigationBarHidden(true)
         }
