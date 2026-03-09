@@ -1,10 +1,12 @@
+//
 // FilmRollDetailAndEditViews.swift
 // Aegletes
 //
 // Detail view, New Roll editor, Edit Roll editor (+ stack size logic)
 //
-// Edited on 3/9/26 - Revision 2 - Editable status dates (Loaded/Finished/Scanned) in Edit view,
-// and detail view reads live roll from FilmRollStore.
+// Edited on 3/9/26 - Revision 3 - Status dates in detail, editable dates in edit view,
+// and bottom "Update Status" button reusing FilmRollStore.updateStatus/loadRoll.
+//
 
 import SwiftUI
 
@@ -12,6 +14,14 @@ struct FilmRollDetailView: View {
     @EnvironmentObject var filmStore: FilmRollStore
     let roll: FilmRoll
     @State private var showingEdit = false
+
+    // Local status workflow state (UI only; backend logic is in FilmRollStore)
+    @State private var pendingNextStatus: FilmRollStatus?
+    @State private var showingStatusAlert = false
+
+    @State private var showingLoadSheet = false
+    @State private var selectedCameraForLoad: String = ""
+    @State private var selectedEffectiveISOForLoad: Double = FilmRollDatabase.effectiveISOOptions.first ?? 100
 
     /// Always use the latest copy of this roll from the store (so dates/status stay in sync).
     private var liveRoll: FilmRoll {
@@ -51,6 +61,20 @@ struct FilmRollDetailView: View {
                     Text("Scanned: \(scanned.formatted(date: .abbreviated, time: .shortened))")
                 }
             }
+
+            // Bottom "Update Status" button (mirrors swipe action behavior)
+            Section {
+                Button {
+                    handleUpdateStatusTap()
+                } label: {
+                    HStack {
+                        Spacer()
+                        Text("Update Status")
+                            .font(.headline)
+                        Spacer()
+                    }
+                }
+            }
         }
         .navigationTitle(title(for: liveRoll))
         .navigationBarTitleDisplayMode(.inline)
@@ -69,6 +93,40 @@ struct FilmRollDetailView: View {
                 .environmentObject(filmStore)
             }
         }
+        // Load Roll sheet (same view as list, but driven by detail state)
+        .sheet(isPresented: $showingLoadSheet) {
+            NavigationStack {
+                LoadRollStatusView(
+                    roll: liveRoll,
+                    cameraNames: filmStore.cameraNames.filter { $0 != "No camera" },
+                    selectedCamera: $selectedCameraForLoad,
+                    selectedISO: $selectedEffectiveISOForLoad
+                ) { confirmed in
+                    if confirmed {
+                        filmStore.loadRoll(
+                            id: liveRoll.id,
+                            camera: selectedCameraForLoad,
+                            effectiveISO: selectedEffectiveISOForLoad
+                        )
+                    }
+                    showingLoadSheet = false
+                }
+            }
+        }
+        // Confirmation alert for non-loaded status changes
+        .alert("Update Status", isPresented: $showingStatusAlert) {
+            Button("Cancel", role: .cancel) {
+                pendingNextStatus = nil
+            }
+            Button("Confirm") {
+                if let next = pendingNextStatus {
+                    filmStore.updateStatus(forRollId: liveRoll.id, to: next)
+                }
+                pendingNextStatus = nil
+            }
+        } message: {
+            Text(statusAlertMessage(for: pendingNextStatus))
+        }
     }
 
     private func title(for roll: FilmRoll) -> String {
@@ -80,7 +138,71 @@ struct FilmRollDetailView: View {
         }
         return components.joined(separator: " ")
     }
+
+    // MARK: - Status helpers (reuse same progression as list)
+
+    private func nextStatus(after status: FilmRollStatus) -> FilmRollStatus? {
+        switch status {
+        case .inStorage:
+            return .loaded
+        case .loaded:
+            return .finished
+        case .finished:
+            return .developed
+        case .developed:
+            return .scanning
+        case .scanning:
+            return .archived
+        case .archived:
+            return .scanning
+        }
+    }
+
+    private func handleUpdateStatusTap() {
+        guard let next = nextStatus(after: liveRoll.status) else { return }
+
+        if next == .loaded {
+            prepareLoadDefaults()
+            showingLoadSheet = true
+        } else {
+            pendingNextStatus = next
+            showingStatusAlert = true
+        }
+    }
+
+    private func statusAlertMessage(for next: FilmRollStatus?) -> String {
+        guard let next else { return "" }
+        switch next {
+        case .inStorage:
+            return "Return this roll to storage?"
+        case .loaded:
+            return "Load this roll into a camera?"
+        case .finished:
+            return "Mark this roll as Finished?"
+        case .developed:
+            return "Mark this roll as Developed?"
+        case .scanning:
+            return "Mark this roll as Scanning?"
+        case .archived:
+            return "Archive this roll?"
+        }
+    }
+
+    private func prepareLoadDefaults() {
+        // Do NOT pre-fill a camera; force the user to pick/enter one.
+        selectedCameraForLoad = ""
+
+        // Default effective ISO: effectiveISO if valid, else boxISO, else first option
+        let defaultISO = (liveRoll.effectiveISO > 0) ? liveRoll.effectiveISO : liveRoll.boxISO
+        if FilmRollDatabase.effectiveISOOptions.contains(defaultISO) {
+            selectedEffectiveISOForLoad = defaultISO
+        } else {
+            selectedEffectiveISOForLoad = FilmRollDatabase.effectiveISOOptions.first ?? defaultISO
+        }
+    }
 }
+
+// MARK: - New / Edit Views (unchanged except for dates)
 
 struct FilmRollEditorView: View {
     @EnvironmentObject var filmStore: FilmRollStore

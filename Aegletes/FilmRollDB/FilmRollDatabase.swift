@@ -5,6 +5,7 @@
 // Created by Nadir Pozegija on 3/7/26.
 // Edited on 3/8/26 - FilmType, notes, JSON DB, store, camera list management, FilmIdentity
 // Edited on 3/9/26 - Preserve cameraNames independent of rolls (no clearing when rolls = []).
+// Edited on 3/9/26 - Added FilmRollStore.loadRoll(...) for shared "load into camera" workflow.
 //
 
 import Foundation
@@ -57,14 +58,18 @@ struct FilmRoll: Identifiable, Codable, Equatable {
     var filmType: FilmType
     var format: FilmFormat
     var boxISO: Double         // nominal ISO of the film
-    var effectiveISO: Double   // EI you actually rate it at
+    var effectiveISO: Double   // EI you actually shoot it at
 
     // Camera metadata
     var camera: String         // must come from cameraNames; defaults to "No camera"
 
     // Lifecycle
     var status: FilmRollStatus
+    // Creation timestamp for this roll (set automatically, never user-editable).
+    var dateCreated: Date
+    // Records when user loads film into camera
     var dateLoaded: Date?
+    // Records when the roll is finished and removed from the camera
     var dateFinished: Date?
     /// Records when status first becomes .archived (treated as "dateScanned" per requirements).
     var dateScanned: Date?
@@ -80,6 +85,7 @@ struct FilmRoll: Identifiable, Codable, Equatable {
         effectiveISO: Double,
         camera: String,
         status: FilmRollStatus = .inStorage,
+        dateCreated: Date = Date(),
         dateLoaded: Date? = nil,
         dateFinished: Date? = nil,
         dateScanned: Date? = nil
@@ -94,11 +100,68 @@ struct FilmRoll: Identifiable, Codable, Equatable {
         self.effectiveISO = effectiveISO
         self.camera = camera
         self.status = status
+        self.dateCreated = dateCreated
         self.dateLoaded = dateLoaded
         self.dateFinished = dateFinished
         self.dateScanned = dateScanned
     }
+    // MARK: - Codable with backward compatibility
 
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case dateCreated
+        case notes
+        case manufacturer
+        case stock
+        case filmType
+        case format
+        case boxISO
+        case effectiveISO
+        case camera
+        case status
+        case dateLoaded
+        case dateFinished
+        case dateScanned
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = try c.decode(UUID.self, forKey: .id)
+        // Use existing value if present, else default to "now" for old JSON without this field.
+        dateCreated = try c.decodeIfPresent(Date.self, forKey: .dateCreated) ?? Date()
+        notes = try c.decode(String.self, forKey: .notes)
+        manufacturer = try c.decode(String.self, forKey: .manufacturer)
+        stock = try c.decode(String.self, forKey: .stock)
+        filmType = try c.decode(FilmType.self, forKey: .filmType)
+        format = try c.decode(FilmFormat.self, forKey: .format)
+        boxISO = try c.decode(Double.self, forKey: .boxISO)
+        effectiveISO = try c.decode(Double.self, forKey: .effectiveISO)
+        camera = try c.decode(String.self, forKey: .camera)
+        status = try c.decode(FilmRollStatus.self, forKey: .status)
+        dateLoaded = try c.decodeIfPresent(Date.self, forKey: .dateLoaded)
+        dateFinished = try c.decodeIfPresent(Date.self, forKey: .dateFinished)
+        dateScanned = try c.decodeIfPresent(Date.self, forKey: .dateScanned)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(dateCreated, forKey: .dateCreated)
+        try c.encode(notes, forKey: .notes)
+        try c.encode(manufacturer, forKey: .manufacturer)
+        try c.encode(stock, forKey: .stock)
+        try c.encode(filmType, forKey: .filmType)
+        try c.encode(format, forKey: .format)
+        try c.encode(boxISO, forKey: .boxISO)
+        try c.encode(effectiveISO, forKey: .effectiveISO)
+        try c.encode(camera, forKey: .camera)
+        try c.encode(status, forKey: .status)
+        try c.encodeIfPresent(dateLoaded, forKey: .dateLoaded)
+        try c.encodeIfPresent(dateFinished, forKey: .dateFinished)
+        try c.encodeIfPresent(dateScanned, forKey: .dateScanned)
+    }
+    
     /// Update status and automatically set key dates on first transition:
     /// - dateLoaded   when status becomes .loaded
     /// - dateFinished when status becomes .finished
@@ -459,5 +522,30 @@ final class FilmRollStore: ObservableObject {
         } catch {
             // Ignore or log
         }
+    }
+}
+
+// MARK: - Shared "Load Roll into Camera" backend logic
+
+extension FilmRollStore {
+    /// Load a roll into a camera with a specific effective ISO.
+    /// - Validates camera / ISO, updates camera + EI, and sets status to .loaded with dateLoaded.
+    func loadRoll(id: UUID, camera: String, effectiveISO: Double, at date: Date = Date()) {
+        let trimmed = camera.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard
+            !trimmed.isEmpty,
+            trimmed != "No camera",
+            FilmRollDatabase.effectiveISOOptions.contains(effectiveISO),
+            let idx = database.rolls.firstIndex(where: { $0.id == id })
+        else {
+            return
+        }
+
+        var roll = database.rolls[idx]
+        roll.camera = trimmed
+        roll.effectiveISO = effectiveISO
+        roll.updateStatus(to: .loaded, at: date)
+        database.updateRoll(roll)
     }
 }

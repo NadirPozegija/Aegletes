@@ -4,8 +4,10 @@
 //
 // Status UI helpers, status workflow, and LoadRollStatusView
 //
-// Edited on 3/9/26 - Revision 4 - Subheader: Shot @ ISO (orange/green), status dates via updateStatus.
+// Edited on 3/9/26 - Revision 4 - Subheader: Shot @ ISO (orange/green), status dates via updateStatus,
+// and load workflow delegated to FilmRollStore.loadRoll(...).
 //
+
 import SwiftUI
 
 extension FilmStackListView {
@@ -241,25 +243,12 @@ extension FilmStackListView {
     }
 
     func applyLoadStatus(for roll: FilmRoll) {
-        let trimmedCamera = selectedCameraForLoad.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Require a real camera name (not empty, not "No camera") and a valid effective ISO.
-        guard
-            !trimmedCamera.isEmpty,
-            trimmedCamera != "No camera",
-            FilmRollDatabase.effectiveISOOptions.contains(selectedEffectiveISOForLoad)
-        else {
-            return
-        }
-
-        // Start from the existing roll, adjust camera/EI, then use FilmRoll.updateStatus
-        // so dateLoaded is set when first transitioning to .loaded.
-        var updated = roll
-        updated.camera = trimmedCamera
-        updated.effectiveISO = selectedEffectiveISOForLoad
-        updated.updateStatus(to: .loaded)
-
-        filmStore.updateRoll(updated)
+        // Delegate to shared backend logic in FilmRollStore
+        filmStore.loadRoll(
+            id: roll.id,
+            camera: selectedCameraForLoad,
+            effectiveISO: selectedEffectiveISOForLoad
+        )
     }
 }
 
