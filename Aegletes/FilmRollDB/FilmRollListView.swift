@@ -2,7 +2,7 @@
 // FilmRollListView.swift
 // Aegletes
 //
-// Main Film DB list: stacks, HeroView usage, expand/collapse, row subheadlines
+// Main Film DB list: stacks, HeroView usage, expand/collapse
 //
 
 import SwiftUI
@@ -15,9 +15,21 @@ struct FilmStack {
 struct FilmStackListView: View {
     @EnvironmentObject var filmStore: FilmRollStore
 
-    @State private var expandedStackIDs: Set<FilmIdentity.ID> = []
-    @State private var rollBeingEdited: FilmRoll?
-    @State private var showingEditSheet: Bool = false
+    // UI state
+    @State var expandedStackIDs: Set<FilmIdentity.ID> = []
+    @State var rollBeingEdited: FilmRoll?
+    @State var showingEditSheet: Bool = false
+
+    // For generic status confirmation (non-loaded transitions)
+    @State var pendingStatusRoll: FilmRoll?
+    @State var pendingNextStatus: FilmRollStatus?
+    @State var showingStatusAlert: Bool = false
+
+    // For special "Load roll" sheet when transitioning to .loaded
+    @State var rollBeingLoaded: FilmRoll?
+    @State var showingLoadSheet: Bool = false
+    @State var selectedCameraForLoad: String = ""
+    @State var selectedEffectiveISOForLoad: Double = 0
 
     var body: some View {
         List {
@@ -45,9 +57,9 @@ struct FilmStackListView: View {
                                 expandedStackIDs.insert(stack.identity.id)
                             }
                         }
+                        // Only delete whole stack here – NO status update
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
-                                // Delete the entire stack (all rolls of this identity)
                                 expandedStackIDs.remove(stack.identity.id)
                                 let all = filmStore.rolls.filter { $0.filmIdentity == stack.identity }
                                 all.forEach { filmStore.removeRoll($0) }
@@ -56,7 +68,7 @@ struct FilmStackListView: View {
                             }
                         }
 
-                        // Expanded entries, sequentially named, each with its own swipe action
+                        // Expanded entries, sequentially named, each with its own swipe actions
                         if expandedStackIDs.contains(stack.identity.id) {
                             ForEach(Array(stack.rolls.enumerated()), id: \.element.id) { index, roll in
                                 HStack {
@@ -73,11 +85,20 @@ struct FilmStackListView: View {
                                     showingEditSheet = true
                                 }
                                 .swipeActions(edge: .trailing) {
+                                    // Delete just this roll
                                     Button(role: .destructive) {
                                         filmStore.removeRoll(roll)
                                     } label: {
                                         Image(systemName: "trash")
                                     }
+
+                                    // Advance status for this specific roll
+                                    Button {
+                                        advanceStatus(for: roll)
+                                    } label: {
+                                        Image(systemName: updateStatusSymbol(for: roll.status))
+                                    }
+                                    .tint(updateStatusTint(for: roll.status))
                                 }
                             }
                         }
@@ -94,10 +115,27 @@ struct FilmStackListView: View {
                                 Spacer()
                             }
                         }
+                        .swipeActions(edge: .trailing) {
+                            // Delete this single roll
+                            Button(role: .destructive) {
+                                filmStore.removeRoll(roll)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+
+                            // Advance status for this roll
+                            Button {
+                                advanceStatus(for: roll)
+                            } label: {
+                                Image(systemName: updateStatusSymbol(for: roll.status))
+                            }
+                            .tint(updateStatusTint(for: roll.status))
+                        }
                     }
                 }
             }
         }
+        // Existing Edit Roll sheet
         .sheet(isPresented: $showingEditSheet, onDismiss: {
             rollBeingEdited = nil
         }) {
@@ -110,114 +148,40 @@ struct FilmStackListView: View {
                 }
             }
         }
-    }
-
-    // MARK: - Stack building & sorting
-
-    private func buildStacks(from rolls: [FilmRoll]) -> [FilmStack] {
-        var dict: [FilmIdentity: [FilmRoll]] = [:]
-        for roll in rolls {
-            dict[roll.filmIdentity, default: []].append(roll)
-        }
-
-        // Sort stacks by manufacturer, then stock, then format, then boxISO
-        return dict.map { FilmStack(identity: $0.key, rolls: $0.value) }
-            .sorted { a, b in
-                let ia = a.identity
-                let ib = b.identity
-                if ia.manufacturer != ib.manufacturer {
-                    return ia.manufacturer < ib.manufacturer
-                }
-                if ia.stock != ib.stock {
-                    return ia.stock < ib.stock
-                }
-                if ia.filmType != ib.filmType {
-                    return ia.filmType.rawValue < ib.filmType.rawValue
-                }
-                if ia.format != ib.format {
-                    return ia.format.rawValue < ib.format.rawValue
-                }
-                return ia.boxISO < ib.boxISO
-            }
-    }
-
-    private func heading(for identity: FilmIdentity) -> String {
-        let m = identity.manufacturer.trimmingCharacters(in: .whitespacesAndNewlines)
-        let s = identity.stock.trimmingCharacters(in: .whitespacesAndNewlines)
-        let components = [m, s].filter { !$0.isEmpty }
-        if components.isEmpty {
-            return "Film Roll"
-        }
-        return components.joined(separator: " ")
-    }
-
-    // MARK: - Subheadline builder with SF Symbols (two lines)
-
-    @ViewBuilder
-    private func rollSubheadline(for roll: FilmRoll) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            // First subheader line:
-            // <Film Type + icon> • ISO <Box ISO>
-            HStack(spacing: 4) {
-                HStack(spacing: 2) {
-                    Text(roll.filmType.rawValue)
-                    switch roll.filmType {
-                    case .color:
-                        Image(systemName: "rainbow")
-                            .symbolRenderingMode(.multicolor)
-                    case .bw:
-                        Image(systemName: "square.tophalf.filled")
-                    case .slide:
-                        EmptyView() // no specific icon defined
-                    }
-                }
-
-                Text("•")
-
-                Text("ISO \(Int(roll.boxISO))")
-            }
-
-            // Second subheader line:
-            // <Status + icon> • <Camera? + camera.fill>
-            HStack(spacing: 4) {
-                HStack(spacing: 2) {
-                    Text(roll.status.rawValue)
-                    if let statusSymbol = statusSymbolName(for: roll.status) {
-                        Image(systemName: statusSymbol)
-                    }
-                }
-
-                let cam = roll.camera.trimmingCharacters(in: .whitespacesAndNewlines)
-                let hasCamera = !cam.isEmpty && cam != "No camera"
-
-                if hasCamera {
-                    Text("•")
-                    HStack(spacing: 2) {
-                        Text(cam)
-                        Image(systemName: "camera.fill")
+        // Load Roll sheet (when transitioning to .loaded)
+        .sheet(isPresented: $showingLoadSheet) {
+            if let roll = rollBeingLoaded {
+                NavigationStack {
+                    LoadRollStatusView(
+                        roll: roll,
+                        cameraNames: filmStore.cameraNames,
+                        selectedCamera: $selectedCameraForLoad,
+                        selectedISO: $selectedEffectiveISOForLoad
+                    ) { confirmed in
+                        if confirmed {
+                            applyLoadStatus(for: roll)
+                        }
+                        showingLoadSheet = false
+                        rollBeingLoaded = nil
                     }
                 }
             }
         }
-        .font(.subheadline)
-        .foregroundColor(.secondary)
-    }
-
-    private func statusSymbolName(for status: FilmRollStatus) -> String? {
-        switch status {
-        case .inStorage:
-            return "shippingbox.fill"
-        case .loaded:
-            return "camera.circle.fill"
-        case .finished:
-            // Closest available SF Symbol to a checkered finish flag
-            return "flag.checkered"
-        case .developed:
-            return "testtube.2"
-        case .scanning:
-            return "testtube.2"
-        case .archived:
-            return "film.stack"
+        // Confirmation alert for non-loaded status changes
+        .alert("Update Status", isPresented: $showingStatusAlert) {
+            Button("Cancel", role: .cancel) {
+                pendingStatusRoll = nil
+                pendingNextStatus = nil
+            }
+            Button("Confirm") {
+                if let roll = pendingStatusRoll, let next = pendingNextStatus {
+                    applyStatusChange(for: roll, to: next)
+                }
+                pendingStatusRoll = nil
+                pendingNextStatus = nil
+            }
+        } message: {
+            Text(statusAlertMessage())
         }
     }
 }
