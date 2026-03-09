@@ -66,7 +66,7 @@ struct FilmDBRootView: View {
                     Button(action: { showingNewRoll = true }) {
                         HStack(spacing: 4) {
                             Image(systemName: "film.roll.plus")
-                            Text("Add Roll")
+                            Text("Add Roll(s)")
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
@@ -81,9 +81,10 @@ struct FilmDBRootView: View {
                     }
                 }
                 .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)   // <- primary system color for text/icons
                 .padding(.horizontal)
                 .padding(.vertical, 4)
-                .background(Color(.systemBackground).opacity(0.95))
+                .background(Color(.systemBackground).opacity(0.75))
 
                 Divider()
 

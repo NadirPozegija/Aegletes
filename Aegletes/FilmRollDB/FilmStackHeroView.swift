@@ -32,7 +32,7 @@ struct FilmStackHeroView: View {
         ZStack {
             // Background: top card fully opaque gray, others semi-transparent gray
             RoundedRectangle(cornerRadius: 12)
-                .fill(isTop ? Color.gray.opacity(1.0) : Color.gray.opacity(0.15))
+                .fill(isTop ? Color(red: 0.22, green: 0.22, blue: 0.3).opacity(1.0) : Color(red: 0.44, green: 0.44, blue: 0.6).opacity(0.15))
 
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.gray.opacity(0.4), lineWidth: 1)

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 /// Top-of-screen segment selector (1–5) used to filter FilmRolls.
 /// Styled similarly to the Exposure Mode selector.
@@ -13,12 +14,16 @@ struct FilmRollsSegmentSelector: View {
     @Binding var selectedSegment: Int
 
     private let segments: [(id: Int, title: String)] = [
-        (1, "All Rolls"),
+        (1, "All"),
         (2, "In Storage"),
-        (3, "Loaded Rolls"),
+        (3, "Loaded"),
         (4, "Processing"),
         (5, "Archived")
     ]
+
+    // Scalable bar height, derived from screen height (≈ screenHeight / 12),
+    // clamped to a reasonable range so it never gets huge or tiny.
+    @State private var barHeight: CGFloat = 32
 
     var body: some View {
         HStack(spacing: 0) {
@@ -30,27 +35,42 @@ struct FilmRollsSegmentSelector: View {
                         selectedSegment = segment.id
                     }
                 } label: {
-                    Text(segment.title)
-                        .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
-                        .foregroundColor(isSelected ? .white : .white.opacity(0.75))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(
-                            Capsule()
-                                .fill(isSelected ? Color.green : Color.clear)
-                        )
+                    ZStack {
+                        // Fill the entire segment area inside the capsule
+                        (isSelected ? Color(red: 0.7, green: 0.7, blue: 0.19).opacity(0.85) : Color.clear)
+
+                        Text(segment.title)
+                            .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                            .foregroundColor(isSelected ? Color.primary : Color.primary.opacity(0.75))
+                            .padding(.vertical, 8)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(2)
-        .background(
+        .frame(height: barHeight)
+        .clipShape(Capsule())
+        .overlay(
             Capsule()
-                .stroke(Color.white.opacity(0.4), lineWidth: 1)
-                .background(
-                    Capsule().fill(Color.black.opacity(0.35))
-                )
+                .stroke(Color.secondary.opacity(0.4), lineWidth: 1)
         )
+        .onAppear {
+            updateBarHeightFromScreen()
+        }
+    }
+
+    /// Compute bar height as roughly 1/15 of the current screen height,
+    /// using a UIScreen obtained via windowScene (no UIScreen.main).
+    private func updateBarHeightFromScreen() {
+        guard
+            let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+            let screen = scene.screen as UIScreen?
+        else { return }
+
+        let h = screen.bounds.height / 12.0
+        // Clamp to something sensible so it doesn't get extreme on unusual screens
+        barHeight = max(28, min(h, 60))
     }
 }
 
