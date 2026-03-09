@@ -4,23 +4,23 @@
 //
 // Status UI helpers, status workflow, and LoadRollStatusView
 //
-
+// Edited on 3/9/26 - Revision 4 - Subheader: Shot @ ISO (orange/green), status dates via updateStatus.
+//
 import SwiftUI
 
 extension FilmStackListView {
-
     // MARK: - Stack building & sorting
-
     func buildStacks(from rolls: [FilmRoll]) -> [FilmStack] {
         var dict: [FilmIdentity: [FilmRoll]] = [:]
         for roll in rolls {
             dict[roll.filmIdentity, default: []].append(roll)
         }
-
-        return dict.map { FilmStack(identity: $0.key, rolls: $0.value) }
+        return dict
+            .map { FilmStack(identity: $0.key, rolls: $0.value) }
             .sorted { a, b in
                 let ia = a.identity
                 let ib = b.identity
+
                 if ia.manufacturer != ib.manufacturer {
                     return ia.manufacturer < ib.manufacturer
                 }
@@ -48,12 +48,12 @@ extension FilmStackListView {
     }
 
     // MARK: - Subheadline builder with SF Symbols (two lines)
-
     @ViewBuilder
     func rollSubheadline(for roll: FilmRoll) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             // First subheader line:
-            // <Film Type + icon> • ISO <Box ISO>
+            // <Film Type + icon> • ISO <Box ISO>   (inStorage)
+            // <Film Type + icon> • Shot @ ISO <Effective ISO>   (other statuses)
             HStack(spacing: 4) {
                 HStack(spacing: 2) {
                     Text(roll.filmType.rawValue)
@@ -70,11 +70,24 @@ extension FilmStackListView {
 
                 Text("•")
 
-                Text("ISO \(Int(roll.boxISO))")
+                let isInStorage = (roll.status == .inStorage)
+                let isPushedOrPulled = roll.effectiveISO != roll.boxISO
+
+                if isInStorage {
+                    // Original behavior for rolls still in storage
+                    Text("ISO \(Int(roll.boxISO))")
+                        .foregroundColor(.secondary)
+                } else {
+                    // Loaded / finished / developed / scanning / archived
+                    let label = "Shot @ ISO \(Int(roll.effectiveISO))"
+                    Text(label)
+                        .foregroundColor(isPushedOrPulled ? .orange : .green)
+                }
             }
+            .foregroundColor(.secondary)
 
             // Second subheader line:
-            // <Status + icon> • <Camera? + camera.fill>
+            // <Status + icon> • <Camera?> + camera.fill
             HStack(spacing: 4) {
                 HStack(spacing: 2) {
                     Text(roll.status.rawValue)
@@ -85,7 +98,6 @@ extension FilmStackListView {
 
                 let cam = roll.camera.trimmingCharacters(in: .whitespacesAndNewlines)
                 let hasCamera = !cam.isEmpty && cam != "No camera"
-
                 if hasCamera {
                     Text("•")
                     HStack(spacing: 2) {
@@ -94,9 +106,9 @@ extension FilmStackListView {
                     }
                 }
             }
+            .foregroundColor(.secondary)
         }
         .font(.subheadline)
-        .foregroundColor(.secondary)
     }
 
     func statusSymbolName(for status: FilmRollStatus) -> String? {
@@ -117,7 +129,6 @@ extension FilmStackListView {
     }
 
     // MARK: - Update Status appearance (icon + tint) for swipe action
-
     func updateStatusSymbol(for status: FilmRollStatus) -> String {
         switch status {
         case .inStorage:
@@ -153,7 +164,6 @@ extension FilmStackListView {
     }
 
     // MARK: - Status progression helpers
-
     func advanceStatus(for roll: FilmRoll) {
         guard let next = nextStatus(after: roll.status) else {
             return
@@ -190,23 +200,9 @@ extension FilmStackListView {
     }
 
     func applyStatusChange(for roll: FilmRoll, to next: FilmRollStatus) {
-        let updated = FilmRoll(
-            id: roll.id,
-            notes: roll.notes,
-            manufacturer: roll.manufacturer,
-            stock: roll.stock,
-            filmType: roll.filmType,
-            format: roll.format,
-            boxISO: roll.boxISO,
-            effectiveISO: roll.effectiveISO,
-            camera: roll.camera,
-            status: next,
-            dateLoaded: roll.dateLoaded,
-            dateFinished: roll.dateFinished,
-            dateScanned: roll.dateScanned
-        )
-
-        filmStore.updateRoll(updated)
+        // Delegate to FilmRollStore's updateStatus so FilmRoll.updateStatus(to:at:)
+        // sets dateLoaded / dateFinished / dateScanned on first transition.
+        filmStore.updateStatus(forRollId: roll.id, to: next)
     }
 
     func statusAlertMessage() -> String {
@@ -228,19 +224,12 @@ extension FilmStackListView {
     }
 
     // MARK: - Load Roll helpers (special case for .loaded)
-
     func prepareLoadSheet(for roll: FilmRoll) {
+        // Set the item that drives the sheet content
         rollBeingLoaded = roll
 
-        // Default camera: existing camera if in list, else first camera name, else "No camera"
-        let trimmedCamera = roll.camera.trimmingCharacters(in: .whitespacesAndNewlines)
-        if filmStore.cameraNames.contains(trimmedCamera) {
-            selectedCameraForLoad = trimmedCamera
-        } else if let first = filmStore.cameraNames.first {
-            selectedCameraForLoad = first
-        } else {
-            selectedCameraForLoad = "No camera"
-        }
+        // Do NOT pre-fill a camera; force the user to pick or enter one.
+        selectedCameraForLoad = ""
 
         // Default effective ISO: effectiveISO if valid, else boxISO, else first option
         let defaultISO = (roll.effectiveISO > 0) ? roll.effectiveISO : roll.boxISO
@@ -249,39 +238,32 @@ extension FilmStackListView {
         } else {
             selectedEffectiveISOForLoad = FilmRollDatabase.effectiveISOOptions.first ?? defaultISO
         }
-
-        showingLoadSheet = true
     }
 
     func applyLoadStatus(for roll: FilmRoll) {
         let trimmedCamera = selectedCameraForLoad.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedCamera.isEmpty,
-              FilmRollDatabase.effectiveISOOptions.contains(selectedEffectiveISOForLoad) else {
+
+        // Require a real camera name (not empty, not "No camera") and a valid effective ISO.
+        guard
+            !trimmedCamera.isEmpty,
+            trimmedCamera != "No camera",
+            FilmRollDatabase.effectiveISOOptions.contains(selectedEffectiveISOForLoad)
+        else {
             return
         }
 
-        let updated = FilmRoll(
-            id: roll.id,
-            notes: roll.notes,
-            manufacturer: roll.manufacturer,
-            stock: roll.stock,
-            filmType: roll.filmType,
-            format: roll.format,
-            boxISO: roll.boxISO,
-            effectiveISO: selectedEffectiveISOForLoad,
-            camera: trimmedCamera,
-            status: .loaded,
-            dateLoaded: roll.dateLoaded,
-            dateFinished: roll.dateFinished,
-            dateScanned: roll.dateScanned
-        )
+        // Start from the existing roll, adjust camera/EI, then use FilmRoll.updateStatus
+        // so dateLoaded is set when first transitioning to .loaded.
+        var updated = roll
+        updated.camera = trimmedCamera
+        updated.effectiveISO = selectedEffectiveISOForLoad
+        updated.updateStatus(to: .loaded)
 
         filmStore.updateRoll(updated)
     }
 }
 
 // MARK: - Load Roll Sheet View
-
 struct LoadRollStatusView: View {
     let roll: FilmRoll
     let cameraNames: [String]
@@ -325,7 +307,9 @@ struct LoadRollStatusView: View {
                     onComplete(true)
                 }
                 .disabled(
-                    selectedCamera.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    selectedCamera
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .isEmpty
                     || !FilmRollDatabase.effectiveISOOptions.contains(selectedISO)
                 )
             }

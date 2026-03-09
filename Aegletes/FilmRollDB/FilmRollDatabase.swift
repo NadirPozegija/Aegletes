@@ -4,6 +4,7 @@
 //
 // Created by Nadir Pozegija on 3/7/26.
 // Edited on 3/8/26 - FilmType, notes, JSON DB, store, camera list management, FilmIdentity
+// Edited on 3/9/26 - Preserve cameraNames independent of rolls (no clearing when rolls = []).
 //
 
 import Foundation
@@ -255,15 +256,22 @@ struct FilmRollDatabase: Codable {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         cameraNameSet.insert(trimmed)
+        // Always ensure the sentinel exists
+        cameraNameSet.insert("No camera")
     }
 
     var cameraNames: [String] {
         Array(cameraNameSet).sorted()
     }
 
-    // Rebuild camera name set from rolls if needed
+    /// Rebuild camera name set **without** losing existing user-entered names.
+    /// - Ensures "No camera" is present.
+    /// - Adds any camera names referenced by rolls.
     mutating func rebuildCameraNames() {
-        cameraNameSet = ["No camera"]
+        // Ensure sentinel
+        cameraNameSet.insert("No camera")
+
+        // Merge any cameras used in existing rolls
         for roll in rolls {
             let trimmed = roll.camera.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
@@ -298,6 +306,7 @@ struct FilmRollDatabase: Codable {
 
     mutating func removeRoll(withId id: UUID) {
         rolls.removeAll { $0.id == id }
+        // Keep cameraNameSet as independent store; just ensure sentinel + roll cameras are merged.
         rebuildCameraNames()
     }
 
@@ -318,6 +327,10 @@ struct FilmRollDatabase: Codable {
             }
         }
 
+        // Remove from independent camera set
+        cameraNameSet.remove(trimmed)
+
+        // Ensure sentinel and any in-use cameras are merged back
         rebuildCameraNames()
     }
 
@@ -336,13 +349,15 @@ struct FilmRollDatabase: Codable {
         return docs.appendingPathComponent("FilmRollDatabase.json")
     }
 
-    /// Load database from a JSON file at the given URL. Returns empty DB on failure.
+    /// Load database from a JSON file at the given URL.
+    /// Returns empty DB on failure.
     static func load(from url: URL) -> FilmRollDatabase {
         do {
             let data = try Data(contentsOf: url)
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             var db = try decoder.decode(FilmRollDatabase.self, from: data)
+            // Ensure sentinel + roll cameras are merged into whatever was decoded.
             db.rebuildCameraNames()
             return db
         } catch {
@@ -364,7 +379,6 @@ struct FilmRollDatabase: Codable {
 
 final class FilmRollStore: ObservableObject {
     @Published private(set) var database: FilmRollDatabase
-
     private let storeURL: URL
     private var autosaveCancellable: AnyCancellable?
 
@@ -374,7 +388,8 @@ final class FilmRollStore: ObservableObject {
         if let custom = storeURL {
             url = custom
         } else {
-            url = (try? FilmRollDatabase.defaultStoreURL()) ?? URL(fileURLWithPath: "/dev/null")
+            url = (try? FilmRollDatabase.defaultStoreURL()) ??
+                URL(fileURLWithPath: "/dev/null")
         }
         self.storeURL = url
 

@@ -4,6 +4,8 @@
 //
 // Main Film DB list: stacks, HeroView usage, expand/collapse
 //
+// Edited on 3/9/26 - Revision 3 - Expanded stack rows navigate to detail view.
+//
 
 import SwiftUI
 
@@ -17,8 +19,6 @@ struct FilmStackListView: View {
 
     // UI state
     @State var expandedStackIDs: Set<FilmIdentity.ID> = []
-    @State var rollBeingEdited: FilmRoll?
-    @State var showingEditSheet: Bool = false
 
     // For generic status confirmation (non-loaded transitions)
     @State var pendingStatusRoll: FilmRoll?
@@ -27,7 +27,6 @@ struct FilmStackListView: View {
 
     // For special "Load roll" sheet when transitioning to .loaded
     @State var rollBeingLoaded: FilmRoll?
-    @State var showingLoadSheet: Bool = false
     @State var selectedCameraForLoad: String = ""
     @State var selectedEffectiveISOForLoad: Double = 0
 
@@ -71,18 +70,15 @@ struct FilmStackListView: View {
                         // Expanded entries, sequentially named, each with its own swipe actions
                         if expandedStackIDs.contains(stack.identity.id) {
                             ForEach(Array(stack.rolls.enumerated()), id: \.element.id) { index, roll in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Roll \(index + 1)")
-                                            .font(.subheadline.weight(.semibold))
-                                        rollSubheadline(for: roll)
+                                NavigationLink(destination: FilmRollDetailView(roll: roll)) {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Roll \(index + 1)")
+                                                .font(.subheadline.weight(.semibold))
+                                            rollSubheadline(for: roll)
+                                        }
+                                        Spacer()
                                     }
-                                    Spacer()
-                                }
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    rollBeingEdited = roll
-                                    showingEditSheet = true
                                 }
                                 .swipeActions(edge: .trailing) {
                                     // Delete just this roll
@@ -109,7 +105,6 @@ struct FilmStackListView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(heading(for: stack.identity))
                                         .font(.headline)
-
                                     rollSubheadline(for: roll)
                                 }
                                 Spacer()
@@ -135,35 +130,21 @@ struct FilmStackListView: View {
                 }
             }
         }
-        // Existing Edit Roll sheet
-        .sheet(isPresented: $showingEditSheet, onDismiss: {
-            rollBeingEdited = nil
-        }) {
-            if let roll = rollBeingEdited {
-                NavigationStack {
-                    FilmRollEditView(roll: roll) { _ in
-                        showingEditSheet = false
+        // Load Roll sheet (when transitioning to .loaded), driven by rollBeingLoaded
+        .sheet(item: $rollBeingLoaded) { roll in
+            NavigationStack {
+                LoadRollStatusView(
+                    roll: roll,
+                    // Exclude "No camera" from the selectable list
+                    cameraNames: filmStore.cameraNames.filter { $0 != "No camera" },
+                    selectedCamera: $selectedCameraForLoad,
+                    selectedISO: $selectedEffectiveISOForLoad
+                ) { confirmed in
+                    if confirmed {
+                        applyLoadStatus(for: roll)
                     }
-                    .environmentObject(filmStore)
-                }
-            }
-        }
-        // Load Roll sheet (when transitioning to .loaded)
-        .sheet(isPresented: $showingLoadSheet) {
-            if let roll = rollBeingLoaded {
-                NavigationStack {
-                    LoadRollStatusView(
-                        roll: roll,
-                        cameraNames: filmStore.cameraNames,
-                        selectedCamera: $selectedCameraForLoad,
-                        selectedISO: $selectedEffectiveISOForLoad
-                    ) { confirmed in
-                        if confirmed {
-                            applyLoadStatus(for: roll)
-                        }
-                        showingLoadSheet = false
-                        rollBeingLoaded = nil
-                    }
+                    // Dismiss by clearing the item
+                    rollBeingLoaded = nil
                 }
             }
         }
