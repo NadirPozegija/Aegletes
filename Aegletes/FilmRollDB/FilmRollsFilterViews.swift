@@ -8,6 +8,10 @@
 import SwiftUI
 import UIKit
 
+extension Color {
+    static let SkyBlue = Color(red: 0.36, green: 0.74, blue: 0.90).opacity(0.9) // Sky Blue
+}
+
 /// Top-of-screen segment selector (1–5) used to filter FilmRolls.
 /// Styled similarly to the Exposure Mode selector.
 struct FilmRollsSegmentSelector: View {
@@ -24,10 +28,6 @@ struct FilmRollsSegmentSelector: View {
     // Scalable bar height, derived from screen height (≈ screenHeight / 12),
     // clamped to a reasonable range so it never gets huge or tiny.
     @State private var barHeight: CGFloat = 32
-    
-    private var SkyBlue: Color {
-        Color(red: 0.36, green: 0.74, blue: 0.90).opacity(0.9) // Sky Blue
-    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -42,7 +42,7 @@ struct FilmRollsSegmentSelector: View {
                 } label: {
                     ZStack {
                         // Fill the entire segment area inside the capsule
-                        (isSelected ? SkyBlue : Color.clear)
+                        (isSelected ? .SkyBlue : Color.clear)
 
                         Text(segment.title)
                             .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
