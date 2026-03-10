@@ -24,6 +24,10 @@ struct FilmRollsSegmentSelector: View {
     // Scalable bar height, derived from screen height (≈ screenHeight / 12),
     // clamped to a reasonable range so it never gets huge or tiny.
     @State private var barHeight: CGFloat = 32
+    
+    private var SkyBlue: Color {
+        Color(red: 0.36, green: 0.74, blue: 0.90).opacity(0.9) // Sky Blue
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -32,16 +36,17 @@ struct FilmRollsSegmentSelector: View {
 
                 Button {
                     if !isSelected {
+                        FilmDBHaptics.light()
                         selectedSegment = segment.id
                     }
                 } label: {
                     ZStack {
                         // Fill the entire segment area inside the capsule
-                        (isSelected ? Color(red: 0.7, green: 0.7, blue: 0.19).opacity(0.85) : Color.clear)
+                        (isSelected ? SkyBlue : Color.clear)
 
                         Text(segment.title)
                             .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
-                            .foregroundColor(isSelected ? Color.primary : Color.primary.opacity(0.75))
+                            .foregroundColor(isSelected ? .primary : .primary.opacity(0.75))
                             .padding(.vertical, 8)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -60,7 +65,7 @@ struct FilmRollsSegmentSelector: View {
         }
     }
 
-    /// Compute bar height as roughly 1/15 of the current screen height,
+    /// Compute bar height as roughly 1/12 of the current screen height,
     /// using a UIScreen obtained via windowScene (no UIScreen.main).
     private func updateBarHeightFromScreen() {
         guard

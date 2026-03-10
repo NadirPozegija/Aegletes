@@ -23,7 +23,10 @@ struct FilmDBRootView: View {
                 // Custom top bar with three aligned buttons
                 HStack {
                     // Left: back to meter
-                    Button(action: onBackToMeter) {
+                    Button {
+                        FilmDBHaptics.light()      // <- light haptic
+                        onBackToMeter()
+                    } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
                             Text("Meter")
@@ -43,7 +46,10 @@ struct FilmDBRootView: View {
                     Spacer()
 
                     // Center: Manage Cameras
-                    Button(action: { showingManageCameras = true }) {
+                    Button {
+                        FilmDBHaptics.light()      // <- light haptic
+                        showingManageCameras = true
+                    } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "camera.badge.plus")
                             Text("Manage Cameras")
@@ -63,7 +69,10 @@ struct FilmDBRootView: View {
                     Spacer()
 
                     // Right: Add Roll
-                    Button(action: { showingNewRoll = true }) {
+                    Button {
+                        FilmDBHaptics.light()      // <- light haptic
+                        showingNewRoll = true
+                    } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "film.roll.plus")
                             Text("Add Roll(s)")
@@ -81,7 +90,7 @@ struct FilmDBRootView: View {
                     }
                 }
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)   // <- primary system color for text/icons
+                .foregroundStyle(.primary)
                 .padding(.horizontal)
                 .padding(.vertical, 4)
                 .background(Color(.systemBackground).opacity(0.75))

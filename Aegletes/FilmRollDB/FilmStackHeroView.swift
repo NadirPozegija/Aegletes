@@ -7,10 +7,17 @@
 
 import SwiftUI
 
+extension Color {
+    static let DarkThemeStackColor = Color(red: 0.12, green: 0.06, blue: 0.12) // Darker purple
+    static let LightThemeStackColor = Color(red: 0.96, green: 0.92, blue: 0.96) //pale pink
+}
+
 struct FilmStackHeroView: View {
     let identity: FilmIdentity
     let rolls: [FilmRoll]
     let isExpanded: Bool
+    
+    @Environment(\.colorScheme) var colorScheme: ColorScheme
 
     var body: some View {
         let displayCount = min(rolls.count, 3)
@@ -30,9 +37,14 @@ struct FilmStackHeroView: View {
 
     private func heroRow(isTop: Bool) -> some View {
         ZStack {
-            // Background: top card fully opaque gray, others semi-transparent gray
-            RoundedRectangle(cornerRadius: 12)
-                .fill(isTop ? Color(red: 0.22, green: 0.22, blue: 0.3).opacity(1.0) : Color(red: 0.44, green: 0.44, blue: 0.6).opacity(0.15))
+            // Background: top card fully opaque gray, others semi-transparent gray. Gray shade depending on system theme
+            if colorScheme == .dark{
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isTop ? Color.DarkThemeStackColor : Color.LightThemeStackColor.opacity(0.15))
+            } else {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isTop ? Color.LightThemeStackColor : Color.DarkThemeStackColor.opacity(0.15))
+            }
 
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.gray.opacity(0.4), lineWidth: 1)

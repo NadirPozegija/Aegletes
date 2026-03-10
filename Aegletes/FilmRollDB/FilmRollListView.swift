@@ -14,14 +14,13 @@ struct FilmStack {
 
 struct FilmStackListView: View {
     @EnvironmentObject var filmStore: FilmRollStore
+    @Environment(\.colorScheme) private var colorScheme
 
-    /// The rolls to display (already filtered/sorted by the caller).
+    /// Rolls to display (already filtered/sorted by the caller).
     let rolls: [FilmRoll]
 
     // UI state
     @State var expandedStackIDs: Set<FilmIdentity.ID> = []
-    @State var rollBeingEdited: FilmRoll?
-    @State var showingEditSheet: Bool = false
 
     // For generic status confirmation (non-loaded transitions)
     @State var pendingStatusRoll: FilmRoll?
@@ -38,14 +37,13 @@ struct FilmStackListView: View {
             let stacks = buildStacks(from: rolls)
 
             if stacks.isEmpty {
-                Text("No rolls yet. Use Add Roll to create your first entry.")
+                Text("No rolls yet. Use Add Roll(s) to create your first entry.")
                     .foregroundColor(.secondary)
             } else {
                 ForEach(stacks, id: \.identity.id) { stack in
                     if stack.rolls.count > 1 {
                         // Multi-roll: Hero row (stack) + optional expanded child rows
 
-                        // Hero row (ZStack), with a single swipe action to delete the entire stack
                         FilmStackHeroView(
                             identity: stack.identity,
                             rolls: stack.rolls,
@@ -58,10 +56,11 @@ struct FilmStackListView: View {
                             } else {
                                 expandedStackIDs.insert(stack.identity.id)
                             }
+                            FilmDBHaptics.light()   // hero expand/collapse
                         }
-                        // Only delete whole stack here – NO status update
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
+                                FilmDBHaptics.medium()   // delete whole stack
                                 expandedStackIDs.remove(stack.identity.id)
                                 let all = filmStore.rolls.filter { $0.filmIdentity == stack.identity }
                                 all.forEach { filmStore.removeRoll($0) }
@@ -83,9 +82,20 @@ struct FilmStackListView: View {
                                         Spacer()
                                     }
                                 }
+                                //have the sub rows inherit the color of the top card of the stack for clarity
+                                .listRowBackground(
+                                    colorScheme == .light ?
+                                    Color.LightThemeStackColor : Color.DarkThemeStackColor
+                                )
+                                .simultaneousGesture(
+                                    TapGesture().onEnded {
+                                        FilmDBHaptics.light()  // navigate to detail
+                                    }
+                                )
                                 .swipeActions(edge: .trailing) {
                                     // Delete just this roll
                                     Button(role: .destructive) {
+                                        FilmDBHaptics.medium()
                                         filmStore.removeRoll(roll)
                                     } label: {
                                         Image(systemName: "trash")
@@ -93,6 +103,7 @@ struct FilmStackListView: View {
 
                                     // Advance status for this specific roll
                                     Button {
+                                        FilmDBHaptics.medium()
                                         advanceStatus(for: roll)
                                     } label: {
                                         Image(systemName: updateStatusSymbol(for: roll.status))
@@ -113,9 +124,15 @@ struct FilmStackListView: View {
                                 Spacer()
                             }
                         }
+                        .simultaneousGesture(
+                            TapGesture().onEnded {
+                                FilmDBHaptics.light()  // navigate to detail
+                            }
+                        )
                         .swipeActions(edge: .trailing) {
                             // Delete this single roll
                             Button(role: .destructive) {
+                                FilmDBHaptics.medium()
                                 filmStore.removeRoll(roll)
                             } label: {
                                 Image(systemName: "trash")
@@ -123,6 +140,7 @@ struct FilmStackListView: View {
 
                             // Advance status for this roll
                             Button {
+                                FilmDBHaptics.medium()
                                 advanceStatus(for: roll)
                             } label: {
                                 Image(systemName: updateStatusSymbol(for: roll.status))

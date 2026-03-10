@@ -63,9 +63,10 @@ struct ContentView: View {
                     // Right-aligned folder icon (does not affect badge centering)
                     HStack {
                         Spacer()
-                        Button(action: {
+                        Button {
+                            FilmDBHaptics.light()   // light haptic when opening the Film DB
                             onShowFilmDB?()
-                        }) {
+                        } label: {
                             Image(systemName: "folder")
                                 .font(.system(size: 18, weight: .semibold))
                                 .foregroundColor(.white)
@@ -106,7 +107,7 @@ struct ContentView: View {
 
                         VStack(spacing: 6) {
                             Text("ISO")
-                                .foregroundColor(.white.opacity(0.8))
+                                .foregroundStyle(.white.opacity(0.8))
                                 .font(.system(size: 16, weight: .semibold, design: .serif))
 
                             ZStack {
@@ -253,14 +254,14 @@ struct ContentView: View {
         return VStack(spacing: 6) {
             // Title: fixed position, 16pt, semibold, serif
             Text(title)
-                .foregroundColor(.white.opacity(0.8))
+                .foregroundStyle(.white.opacity(0.8))
                 .font(.system(size: 16, weight: .semibold, design: .serif))
 
             // Wheel picker with center outline only (no filled highlight)
             ZStack {
                 Picker("", selection: selection) {
                     ForEach(values.indices, id: \.self) { idx in
-                        Text(values[idx]).tag(idx)
+                        Text(values[idx]).tag(idx).foregroundStyle(.white)
                     }
                 }
                 .labelsHidden()
@@ -281,7 +282,7 @@ struct ContentView: View {
                 }) {
                     Image(systemName: locked ? "lock.fill" : "lock.open")
                         .font(.caption2.weight(.semibold))
-                        .foregroundColor(.white)
+                        .foregroundStyle(.white)
                         .padding(6)
                         .background(
                             Circle().fill(locked ? Color.red : Color.gray)
@@ -318,6 +319,7 @@ struct ContentView: View {
                         )
                 )
                 .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 2)
+                .foregroundStyle(.white)
         }
     }
 

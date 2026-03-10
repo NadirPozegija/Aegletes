@@ -4,9 +4,6 @@
 //
 // Detail view, New Roll editor, Edit Roll editor (+ stack size logic)
 //
-// Edited on 3/9/26 - Revision 4 - Status dates in detail, editable dates in edit view,
-// bottom "Update Status" button with dynamic label/icon/tint, and preserve dateCreated on edits.
-//
 
 import SwiftUI
 
@@ -37,12 +34,12 @@ struct FilmRollDetailView: View {
             }
 
             Section(header: Text("Film")) {
-                Text("Manufacturer: \(liveRoll.manufacturer)")
-                Text("Stock: \(liveRoll.stock)")
-                Text("Type: \(liveRoll.filmType.rawValue)")
-                Text("Format: \(liveRoll.format.rawValue)")
-                Text("Box ISO: \(Int(liveRoll.boxISO))")
-                Text("Effective ISO: \(Int(liveRoll.effectiveISO))")
+                Text("Manufacturer: \(liveRoll.manufacturer)").bold()
+                Text("Stock: \(liveRoll.stock)").bold()
+                Text("Type: \(liveRoll.filmType.rawValue)").bold()
+                Text("Format: \(liveRoll.format.rawValue)").bold()
+                Text("Box ISO: \(Int(liveRoll.boxISO))").bold()
+                Text("Effective ISO: \(Int(liveRoll.effectiveISO))").bold()
             }
 
             Section(header: Text("Camera")) {
@@ -50,7 +47,7 @@ struct FilmRollDetailView: View {
             }
 
             Section(header: Text("Status")) {
-                Text("\(liveRoll.status.rawValue)").bold()
+                Text(liveRoll.status.rawValue).bold()
                 if let loaded = liveRoll.dateLoaded {
                     Text("Loaded: \(loaded.formatted(date: .abbreviated, time: .shortened))")
                 }
@@ -62,13 +59,12 @@ struct FilmRollDetailView: View {
                 }
             }
 
-            // Bottom "Update Status" button (mirrors swipe action intent/appearance)
+            // Bottom "Update Status" button
             Section {
                 Button {
+                    FilmDBHaptics.medium()      // medium haptic for Update Status button
                     handleUpdateStatusTap()
                 } label: {
-                    let color = detailUpdateStatusTint(for: liveRoll.status)
-
                     HStack {
                         Spacer()
                         Image(systemName: detailUpdateStatusSymbol(for: liveRoll.status))
@@ -77,7 +73,7 @@ struct FilmRollDetailView: View {
                         Spacer()
                     }
                     .padding(.vertical, 8)
-                    .background(color)
+                    .background(detailUpdateStatusTint(for: liveRoll.status))
                     .foregroundColor(.white)
                     .cornerRadius(20)
                 }
