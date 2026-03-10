@@ -31,6 +31,10 @@ struct FilmStackListView: View {
     @State var rollBeingLoaded: FilmRoll?
     @State var selectedCameraForLoad: String = ""
     @State var selectedEffectiveISOForLoad: Double = 0
+    
+    // Secondary confirmation for deletion of a Roll Entry
+    @State private var pendingDeletionRolls: [FilmRoll] = []
+    @State private var showingDeleteConfirmation = false
 
     var body: some View {
         List {
@@ -58,12 +62,13 @@ struct FilmStackListView: View {
                             }
                             FilmDBHaptics.light()   // hero expand/collapse
                         }
+                        // Delete the whole stack
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
-                                FilmDBHaptics.medium()   // delete whole stack
-                                expandedStackIDs.remove(stack.identity.id)
                                 let all = filmStore.rolls.filter { $0.filmIdentity == stack.identity }
-                                all.forEach { filmStore.removeRoll($0) }
+                                pendingDeletionRolls = all
+                                showingDeleteConfirmation = true
+                                FilmDBHaptics.light()
                             } label: {
                                 Image(systemName: "trash")
                             }
@@ -93,10 +98,11 @@ struct FilmStackListView: View {
                                     }
                                 )
                                 .swipeActions(edge: .trailing) {
-                                    // Delete just this roll
+                                    // Delete just this roll from larger stack
                                     Button(role: .destructive) {
-                                        FilmDBHaptics.medium()
-                                        filmStore.removeRoll(roll)
+                                        pendingDeletionRolls = [roll]
+                                        showingDeleteConfirmation = true
+                                        FilmDBHaptics.light()
                                     } label: {
                                         Image(systemName: "trash")
                                     }
@@ -132,8 +138,9 @@ struct FilmStackListView: View {
                         .swipeActions(edge: .trailing) {
                             // Delete this single roll
                             Button(role: .destructive) {
-                                FilmDBHaptics.medium()
-                                filmStore.removeRoll(roll)
+                                pendingDeletionRolls = [roll]
+                                showingDeleteConfirmation = true
+                                FilmDBHaptics.light()
                             } label: {
                                 Image(systemName: "trash")
                             }
@@ -184,6 +191,35 @@ struct FilmStackListView: View {
             }
         } message: {
             Text(statusAlertMessage())
+        }
+        .alert(
+            pendingDeletionRolls.count > 1 ? "Delete Stack?" : "Delete Roll?",
+            isPresented: $showingDeleteConfirmation
+        ) {
+            Button("Cancel", role: .cancel) {
+                pendingDeletionRolls.removeAll()
+            }
+
+            Button("Delete", role: .destructive) {
+                for roll in pendingDeletionRolls {
+                    filmStore.removeRoll(roll)
+                }
+                FilmDBHaptics.rigid()
+                pendingDeletionRolls.removeAll()
+            }
+        } message: {
+            if pendingDeletionRolls.count > 1 {
+                Text("Are you sure you want to delete this stack of \(pendingDeletionRolls.count) rolls?")
+            } else if let roll = pendingDeletionRolls.first {
+                let manufacturer = roll.manufacturer.trimmingCharacters(in: .whitespacesAndNewlines)
+                let stock = roll.stock.trimmingCharacters(in: .whitespacesAndNewlines)
+                let label = [manufacturer, stock].filter { !$0.isEmpty }.joined(separator: " ")
+                Text(label.isEmpty
+                     ? "Are you sure you want to delete this roll?"
+                     : "Are you sure you want to delete this roll of \n\(label)?")
+            } else {
+                Text("Are you sure you want to delete this roll?")
+            }
         }
     }
 }

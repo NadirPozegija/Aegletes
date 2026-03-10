@@ -24,4 +24,8 @@ enum FilmDBHaptics {
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
     }
+    static func rigid() {
+        let generator = UIImpactFeedbackGenerator(style: .rigid)
+        generator.impactOccurred()
+    }
 }
