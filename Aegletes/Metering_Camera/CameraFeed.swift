@@ -100,12 +100,6 @@ final class CameraFeed: NSObject,
         session.commitConfiguration()
     }
 
-    func makePreviewLayer() -> AVCaptureVideoPreviewLayer {
-        let layer = AVCaptureVideoPreviewLayer(session: session)
-        layer.videoGravity = .resizeAspectFill
-        return layer
-    }
-
     // MARK: - Zoom
     func setZoom(factor: CGFloat) {
         queue.async {

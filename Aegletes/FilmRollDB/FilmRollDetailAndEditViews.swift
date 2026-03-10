@@ -1,9 +1,7 @@
-//
-// FilmRollDetailAndEditViews.swift
+//// FilmRollDetailAndEditViews.swift
 // Aegletes
 //
 // Detail view, New Roll editor, Edit Roll editor (+ stack size logic)
-//
 
 import SwiftUI
 
@@ -15,10 +13,10 @@ struct FilmRollDetailView: View {
     // Local status workflow state (UI only; backend logic is in FilmRollStore)
     @State private var pendingNextStatus: FilmRollStatus?
     @State private var showingStatusAlert = false
-
     @State private var showingLoadSheet = false
     @State private var selectedCameraForLoad: String = ""
-    @State private var selectedEffectiveISOForLoad: Double = FilmRollDatabase.effectiveISOOptions.first ?? 100
+    @State private var selectedEffectiveISOForLoad: Double =
+        FilmRollDatabase.effectiveISOOptions.first ?? 100
 
     /// Always use the latest copy of this roll from the store (so dates/status stay in sync).
     private var liveRoll: FilmRoll {
@@ -67,13 +65,13 @@ struct FilmRollDetailView: View {
                 } label: {
                     HStack {
                         Spacer()
-                        Image(systemName: detailUpdateStatusSymbol(for: liveRoll.status))
-                        Text(detailUpdateStatusTitle(for: liveRoll.status))
+                        Image(systemName: liveRoll.status.actionSymbolName)
+                        Text(liveRoll.status.actionTitle)
                             .font(.title2)
                         Spacer()
                     }
                     .padding(.vertical, 8)
-                    .background(detailUpdateStatusTint(for: liveRoll.status))
+                    .background(liveRoll.status.actionTintColor)
                     .foregroundColor(.white)
                     .cornerRadius(20)
                 }
@@ -144,27 +142,10 @@ struct FilmRollDetailView: View {
         return components.joined(separator: " ")
     }
 
-    // MARK: - Status helpers (reuse same progression as list)
-
-    private func nextStatus(after status: FilmRollStatus) -> FilmRollStatus? {
-        switch status {
-        case .inStorage:
-            return .loaded
-        case .loaded:
-            return .finished
-        case .finished:
-            return .developed
-        case .developed:
-            return .scanning
-        case .scanning:
-            return .archived
-        case .archived:
-            return .scanning
-        }
-    }
+    // MARK: - Status helpers (centralized FSM in FilmRollStatus+Workflow)
 
     private func handleUpdateStatusTap() {
-        guard let next = nextStatus(after: liveRoll.status) else { return }
+        guard let next = liveRoll.status.nextStatus else { return }
 
         if next == .loaded {
             prepareLoadDefaults()
@@ -177,20 +158,7 @@ struct FilmRollDetailView: View {
 
     private func statusAlertMessage(for next: FilmRollStatus?) -> String {
         guard let next else { return "" }
-        switch next {
-        case .inStorage:
-            return "Return this roll to storage?"
-        case .loaded:
-            return "Load this roll into a camera?"
-        case .finished:
-            return "Mark this roll as Finished?"
-        case .developed:
-            return "Mark this roll as Developed?"
-        case .scanning:
-            return "Mark this roll as Scanning?"
-        case .archived:
-            return "Archive this roll?"
-        }
+        return next.transitionPrompt
     }
 
     private func prepareLoadDefaults() {
@@ -202,62 +170,8 @@ struct FilmRollDetailView: View {
         if FilmRollDatabase.effectiveISOOptions.contains(defaultISO) {
             selectedEffectiveISOForLoad = defaultISO
         } else {
-            selectedEffectiveISOForLoad = FilmRollDatabase.effectiveISOOptions.first ?? defaultISO
-        }
-    }
-
-    // MARK: - Detail Update Status button appearance
-
-    private func detailUpdateStatusTitle(for status: FilmRollStatus) -> String {
-        switch status {
-        case .inStorage:
-            return "Load Roll"
-        case .loaded:
-            return "Mark Finished"
-        case .finished:
-            return "Mark Developed"
-        case .developed:
-            return "Mark Scanning"
-        case .scanning:
-            return "Archive Roll"
-        case .archived:
-            return "Mark Scanning"
-        }
-    }
-
-    private func detailUpdateStatusSymbol(for status: FilmRollStatus) -> String {
-        // Mirror the swipe action mapping
-        switch status {
-        case .inStorage:
-            return "camera.circle.fill"
-        case .loaded:
-            return "flag.checkered"
-        case .finished:
-            return "testtube.2"
-        case .developed:
-            return "barcode.viewfinder"
-        case .scanning:
-            return "film.stack"
-        case .archived:
-            return "barcode.viewfinder"
-        }
-    }
-
-    private func detailUpdateStatusTint(for status: FilmRollStatus) -> Color {
-        // Mirror the swipe action tint mapping
-        switch status {
-        case .inStorage:
-            return .yellow
-        case .loaded:
-            return .green
-        case .finished:
-            return .blue
-        case .developed:
-            return .indigo
-        case .scanning:
-            return .red
-        case .archived:
-            return .indigo
+            selectedEffectiveISOForLoad =
+                FilmRollDatabase.effectiveISOOptions.first ?? defaultISO
         }
     }
 }
@@ -269,7 +183,8 @@ struct FilmRollEditorView: View {
     let onComplete: (FilmRoll?) -> Void
 
     @State private var notes: String = ""
-    @State private var manufacturer: String = FilmRollDatabase.manufacturerOptions.first ?? ""
+    @State private var manufacturer: String =
+        FilmRollDatabase.manufacturerOptions.first ?? ""
     @State private var stock: String = ""
     @State private var filmType: FilmType = .color
     @State private var format: FilmFormat = .thirtyFive

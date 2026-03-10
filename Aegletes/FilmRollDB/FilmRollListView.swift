@@ -112,9 +112,9 @@ struct FilmStackListView: View {
                                         FilmDBHaptics.medium()
                                         advanceStatus(for: roll)
                                     } label: {
-                                        Image(systemName: updateStatusSymbol(for: roll.status))
+                                        Image(systemName: roll.status.actionSymbolName)
                                     }
-                                    .tint(updateStatusTint(for: roll.status))
+                                    .tint(roll.status.actionTintColor)
                                 }
                             }
                         }
@@ -150,9 +150,9 @@ struct FilmStackListView: View {
                                 FilmDBHaptics.medium()
                                 advanceStatus(for: roll)
                             } label: {
-                                Image(systemName: updateStatusSymbol(for: roll.status))
+                                Image(systemName: roll.status.actionSymbolName)
                             }
-                            .tint(updateStatusTint(for: roll.status))
+                            .tint(roll.status.actionTintColor)
                         }
                     }
                 }

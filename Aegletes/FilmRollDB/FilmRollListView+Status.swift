@@ -93,7 +93,7 @@ extension FilmStackListView {
             HStack(spacing: 4) {
                 HStack(spacing: 2) {
                     Text(roll.status.rawValue)
-                    if let statusSymbol = statusSymbolName(for: roll.status) {
+                    if let statusSymbol = roll.status.statusSymbolName {
                         Image(systemName: statusSymbol)
                     }
                 }
@@ -113,65 +113,12 @@ extension FilmStackListView {
         .font(.subheadline)
     }
 
-    func statusSymbolName(for status: FilmRollStatus) -> String? {
-        switch status {
-        case .inStorage:
-            return "shippingbox.fill"
-        case .loaded:
-            return "camera.circle.fill"
-        case .finished:
-            return "flag.checkered"
-        case .developed:
-            return "testtube.2"
-        case .scanning:
-            return "barcode.viewfinder"
-        case .archived:
-            return "film.stack"
-        }
-    }
-
-    // MARK: - Update Status appearance (icon + tint) for swipe action
-    func updateStatusSymbol(for status: FilmRollStatus) -> String {
-        switch status {
-        case .inStorage:
-            return "camera.circle.fill"
-        case .loaded:
-            return "flag.checkered"
-        case .finished:
-            return "testtube.2"
-        case .developed:
-            return "barcode.viewfinder"
-        case .scanning:
-            return "film.stack"
-        case .archived:
-            return "barcode.viewfinder"
-        }
-    }
-
-    func updateStatusTint(for status: FilmRollStatus) -> Color {
-        switch status {
-        case .inStorage:
-            return .yellow
-        case .loaded:
-            return .green
-        case .finished:
-            return .blue
-        case .developed:
-            return .indigo
-        case .scanning:
-            return .red
-        case .archived:
-            return .indigo
-        }
-    }
-
-    // MARK: - Status progression helpers
     func advanceStatus(for roll: FilmRoll) {
-        guard let next = nextStatus(after: roll.status) else {
+        guard let next = roll.status.nextStatus else {
             return
         }
 
-        // Special case: going to .loaded → require camera + effective ISO
+        // Special case: going to .loaded  require camera + effective ISO
         if next == .loaded {
             prepareLoadSheet(for: roll)
         } else {
@@ -179,25 +126,6 @@ extension FilmStackListView {
             pendingStatusRoll = roll
             pendingNextStatus = next
             showingStatusAlert = true
-        }
-    }
-
-    func nextStatus(after status: FilmRollStatus) -> FilmRollStatus? {
-        // In Storage -> Loaded -> Finished -> Developed -> Scanning -> Archived
-        // Archived -> Scanning (backwards)
-        switch status {
-        case .inStorage:
-            return .loaded
-        case .loaded:
-            return .finished
-        case .finished:
-            return .developed
-        case .developed:
-            return .scanning
-        case .scanning:
-            return .archived
-        case .archived:
-            return .scanning
         }
     }
 
@@ -209,20 +137,7 @@ extension FilmStackListView {
 
     func statusAlertMessage() -> String {
         guard let next = pendingNextStatus else { return "" }
-        switch next {
-        case .inStorage:
-            return "Return this roll to storage?"
-        case .loaded:
-            return "Load this roll into a camera?"
-        case .finished:
-            return "Mark this roll as Finished?"
-        case .developed:
-            return "Mark this roll as Developed?"
-        case .scanning:
-            return "Mark this roll as Scanning?"
-        case .archived:
-            return "Archive this roll?"
-        }
+        return next.transitionPrompt
     }
 
     // MARK: - Load Roll helpers (special case for .loaded)
