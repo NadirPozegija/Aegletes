@@ -8,10 +8,6 @@
 
 import Foundation
 
-enum ExposureLock {
-    case none, iso, aperture, shutter
-}
-
 struct ExposureLockState {
     var iso: Bool = false
     var aperture: Bool = false
