@@ -3,7 +3,7 @@
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/7/26 - Metal-based brightness histogram
+// Edited on 3/10/26 - Moved AVCaptureSession off of main thread to avoid UI hang ups
 //
 
 import AVFoundation
@@ -51,8 +51,23 @@ final class CameraFeed: NSObject,
         configureSession()
     }
 
-    func start() { session.startRunning() }
-    func stop() { session.stopRunning() }
+    // MARK: - Session control (moved off main thread)
+
+    func start() {
+        queue.async { [weak self] in
+            guard let self = self, !self.session.isRunning else { return }
+            self.session.startRunning()
+        }
+    }
+
+    func stop() {
+        queue.async { [weak self] in
+            guard let self = self, self.session.isRunning else { return }
+            self.session.stopRunning()
+        }
+    }
+
+    // MARK: - Session configuration
 
     private func configureSession() {
         session.beginConfiguration()
@@ -86,8 +101,7 @@ final class CameraFeed: NSObject,
 
         // Request BGRA so we can easily build both CIImage and Metal textures
         videoOutput.videoSettings = [
-            kCVPixelBufferPixelFormatTypeKey as String:
-                kCVPixelFormatType_32BGRA
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
         ]
 
         // Video output for live EV metering + Core Image preview + Metal histogram
@@ -100,7 +114,14 @@ final class CameraFeed: NSObject,
         session.commitConfiguration()
     }
 
+    func makePreviewLayer() -> AVCaptureVideoPreviewLayer {
+        let layer = AVCaptureVideoPreviewLayer(session: session)
+        layer.videoGravity = .resizeAspectFill
+        return layer
+    }
+
     // MARK: - Zoom
+
     func setZoom(factor: CGFloat) {
         queue.async {
             guard let device = self.device else { return }
@@ -112,11 +133,13 @@ final class CameraFeed: NSObject,
                 device.videoZoomFactor = clamped
                 device.unlockForConfiguration()
             } catch {
+                // Ignore zoom errors
             }
         }
     }
 
     // MARK: - Exposure control mode
+
     func setAutoExposureEnabled(_ enabled: Bool) {
         queue.async {
             guard let device = self.device else { return }
@@ -146,6 +169,7 @@ final class CameraFeed: NSObject,
             guard let device = self.device else { return }
             do {
                 try device.lockForConfiguration()
+
                 let minISO = device.activeFormat.minISO
                 let maxISO = device.activeFormat.maxISO
                 let targetISO = Float(iso)
@@ -167,11 +191,13 @@ final class CameraFeed: NSObject,
                 self.mode = .manual
                 device.unlockForConfiguration()
             } catch {
+                // Ignore manual exposure errors
             }
         }
     }
 
     // MARK: - Live metering + Core Image exposure simulation + Metal histogram
+
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
@@ -185,6 +211,7 @@ final class CameraFeed: NSObject,
         let iso = device.iso
         let aperture = device.lensAperture
         let t = max(duration.seconds, 1e-6)
+
         let evScene = ev100FromSettings(
             aperture: Double(aperture),
             shutter: t,
