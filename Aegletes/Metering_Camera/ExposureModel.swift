@@ -63,143 +63,158 @@ func evDelta(evScene100: Double, evSettings100: Double) -> Double {
     return evScene100 - evSettings100
 }
 
-// Auto adjust: priority shutter → aperture → ISO, respecting lock.
-// For ISO, treat one "step" as 3 indices (~1 full stop) so it behaves like before
-// even though the wheel exposes 1/3-stop ticks.
-// Helper: minimal (brightest) EV we can reach given current locks.
-private func minPossibleEV(for settings: ExposureSettings,
-                           locks: ExposureLockState) -> Double {
-    var s = settings
-
-    // Brightest aperture: smallest f-number
-    if !locks.aperture {
-        s.apertureIndex = 0
-    }
-
-    // Brightest shutter: longest time
-    if !locks.shutter {
-        s.shutterIndex = shutterValues.indices.last!
-    }
-
-    // Brightest ISO: highest sensitivity
-    if !locks.iso {
-        s.isoIndex = isoValues.indices.last!
-    }
-
-    return settingsEV100(s)
-}
-
-// Auto adjust: priority shutter → aperture → ISO, respecting lock.
-// NEW: guarantees evDelta >= 0 if physically possible, and reports whether that was possible.
+/// Auto adjust exposure settings to match the target EV.
+///
+/// Behavior:
+/// - Priority of *what is allowed to change*:
+///   1. Try to solve using **shutter + aperture only** (ISO fixed).
+///   2. Only if that fails, allow **ISO** to change as well.
+/// - Among all candidates with `evDelta >= 0` (sceneEV - settingsEV), choose the one
+///   with the **smallest positive evDelta** (as close to 0 as possible).
+///   Ties (or near-ties) are broken by preferring:
+///     - shutter changes first (no penalty),
+///     - then aperture changes (small penalty),
+///     - then ISO changes (large penalty).
+/// - If *no* candidate can achieve `evDelta >= 0`, choose the closest overall
+///   (min |evDelta|) and return `false` (low-light warning case).
+///
+/// Returns:
+/// - `true`  if a combination with `evDelta >= 0` was found
+/// - `false` otherwise.
 func autoAdjust(settings: inout ExposureSettings,
                 locks: ExposureLockState,
-                targetEV: Double,
-                maxIterations: Int = 16) -> Bool {
+                targetEV: Double) -> Bool {
 
-    // 1) Check if there exists ANY combination with evDelta >= 0.
-    //    i.e., some settingsEV <= targetEV.
-    let minEV = minPossibleEV(for: settings, locks: locks)
-    let canReachNonNegative = (minEV <= targetEV + 1e-6)
+    let current = settings
 
-    // 2) Original greedy behavior (unchanged).
-    var currentEV = settingsEV100(settings)
+    // Preference penalty: how "undesirable" it is to move away from the current settings.
+    //  - Shutter changes carry no penalty (free to move).
+    //  - Aperture changes are mildly penalized.
+    //  - ISO changes are strongly penalized (last resort).
+    func preferencePenalty(for candidate: ExposureSettings,
+                           from base: ExposureSettings) -> Double {
+        let apertureDist = abs(candidate.apertureIndex - base.apertureIndex)
+        let isoTicks = abs(candidate.isoIndex - base.isoIndex)
+        let isoStops = Double(isoTicks) / 3.0
 
-    func attemptAdjust(for keyPath: WritableKeyPath<ExposureSettings, Int>,
-                       values: [Double],
-                       step: Int = 1) -> Bool {
-        let oldIndex = settings[keyPath: keyPath]
-        var bestIndex = oldIndex
-        var bestEV = currentEV
+        // We ignore shutterDist in the penalty (0 weight), penalize aperture a bit,
+        // and ISO quite a bit more.
+        let apertureWeight = 0.04
+        let isoWeight = 0.15
 
-        let down = max(oldIndex - step, 0)
-        let up = min(oldIndex + step, values.count - 1)
-        let candidates = [down, up].filter { $0 != oldIndex }
+        return apertureWeight * Double(apertureDist)
+             + isoWeight * isoStops
+    }
 
-        for idx in candidates {
-            var test = settings
-            test[keyPath: keyPath] = idx
-            let newEV = settingsEV100(test)
-            if abs(targetEV - newEV) < abs(targetEV - bestEV) {
-                bestEV = newEV
-                bestIndex = idx
+    // Search helper over a given set of ISO indices (respects locks on other axes).
+    func search(isoIndices: [Int]) -> (bestPositive: (ExposureSettings, Double /*delta*/, Double /*penalty*/)?,
+                                       bestAny: (ExposureSettings, Double /*absDelta*/)) {
+
+        // Baseline: current settings
+        var bestAnySettings = current
+        var bestAnyAbsDelta = abs(targetEV - settingsEV100(current))
+
+        var bestPositiveSettings: ExposureSettings?
+        var bestPositiveDelta: Double = .greatestFiniteMagnitude
+        var bestPositivePenalty: Double = .greatestFiniteMagnitude
+
+        let apertureRange: [Int] = locks.aperture
+            ? [current.apertureIndex]
+            : Array(apertureValues.indices)
+
+        let shutterRange: [Int] = locks.shutter
+            ? [current.shutterIndex]
+            : Array(shutterValues.indices)
+
+        let eps: Double = 1e-4
+
+        for isoIdx in isoIndices {
+            for apertureIdx in apertureRange {
+                for shutterIdx in shutterRange {
+                    var candidate = current
+
+                    // Respect ISO lock
+                    candidate.isoIndex = locks.iso ? current.isoIndex : isoIdx
+                    candidate.apertureIndex = apertureIdx
+                    candidate.shutterIndex = shutterIdx
+
+                    let ev = settingsEV100(candidate)
+                    let delta = targetEV - ev
+                    let absDelta = abs(delta)
+
+                    // Track closest overall (min |delta|)
+                    if absDelta < bestAnyAbsDelta {
+                        bestAnyAbsDelta = absDelta
+                        bestAnySettings = candidate
+                    }
+
+                    // Only consider candidates on the "bright enough" side
+                    if delta >= 0 {
+                        let penalty = preferencePenalty(for: candidate, from: current)
+
+                        if bestPositiveSettings == nil {
+                            bestPositiveSettings = candidate
+                            bestPositiveDelta = delta
+                            bestPositivePenalty = penalty
+                        } else {
+                            // Primary key: smaller positive delta
+                            if delta < bestPositiveDelta - eps {
+                                bestPositiveSettings = candidate
+                                bestPositiveDelta = delta
+                                bestPositivePenalty = penalty
+                            }
+                            // Secondary key: for near-equal delta, smaller penalty
+                            else if abs(delta - bestPositiveDelta) <= eps,
+                                    penalty < bestPositivePenalty {
+                                bestPositiveSettings = candidate
+                                bestPositiveDelta = delta
+                                bestPositivePenalty = penalty
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        if bestIndex != oldIndex {
-            settings[keyPath: keyPath] = bestIndex
-            currentEV = bestEV
+        if let pos = bestPositiveSettings {
+            return ((pos, bestPositiveDelta, bestPositivePenalty),
+                    (bestAnySettings, bestAnyAbsDelta))
+        } else {
+            return (nil, (bestAnySettings, bestAnyAbsDelta))
+        }
+    }
+
+    // Case 1: ISO is *not* locked → try to solve without touching ISO first.
+    if !locks.iso {
+        // 1A. Try shutter + aperture only (ISO fixed)
+        let resultNoISO = search(isoIndices: [current.isoIndex])
+
+        if let bestPos = resultNoISO.bestPositive {
+            settings = bestPos.0
             return true
         }
-        return false
-    }
 
-    for _ in 0..<maxIterations {
-        var changed = false
+        // 1B. Allow ISO to change as well
+        let resultFull = search(isoIndices: Array(isoValues.indices))
 
-        if !locks.shutter {
-            changed = attemptAdjust(for: \.shutterIndex,
-                                    values: shutterValues,
-                                    step: 1) || changed
+        if let bestPos = resultFull.bestPositive {
+            settings = bestPos.0
+            return true
+        } else {
+            // No candidate with evDelta >= 0 exists at all
+            settings = resultFull.bestAny.0
+            return false
         }
-        if !locks.aperture {
-            changed = attemptAdjust(for: \.apertureIndex,
-                                    values: apertureValues,
-                                    step: 1) || changed
-        }
-        if !locks.iso {
-            // ISO “step” is 3 indices ≈ 1 stop
-            changed = attemptAdjust(for: \.isoIndex,
-                                    values: isoValues,
-                                    step: 3) || changed
-        }
-        if !changed { break }
-    }
+    } else {
+        // Case 2: ISO locked → single-pass search with fixed ISO
+        let result = search(isoIndices: [current.isoIndex])
 
-    // 3) If some combination CAN achieve evDelta >= 0, clamp final result so evDelta >= 0.
-    if canReachNonNegative {
-        var delta = targetEV - currentEV       // evDelta = sceneEV - settingsEV
-        var guardIterations = 0
-
-        while delta < 0 && guardIterations < 32 {
-            var brightened = false
-
-            // Try to brighten via shutter first (longer exposure)
-            if !locks.shutter {
-                let old = settings.shutterIndex
-                if old < shutterValues.count - 1 {
-                    settings.shutterIndex = old + 1
-                    currentEV = settingsEV100(settings)
-                    brightened = true
-                }
-            }
-
-            // If we couldn't change shutter, brighten via aperture (wider, smaller f-number)
-            if !brightened && !locks.aperture {
-                let old = settings.apertureIndex
-                if old > 0 {
-                    settings.apertureIndex = old - 1
-                    currentEV = settingsEV100(settings)
-                    brightened = true
-                }
-            }
-
-            // If still no change, brighten via ISO (higher sensitivity)
-            if !brightened && !locks.iso {
-                let old = settings.isoIndex
-                if old < isoValues.count - 1 {
-                    let newIndex = min(old + 3, isoValues.count - 1) // ~1 stop
-                    settings.isoIndex = newIndex
-                    currentEV = settingsEV100(settings)
-                    brightened = true
-                }
-            }
-
-            if !brightened { break } // Can't get any brighter given locks/limits
-            delta = targetEV - currentEV
-            guardIterations += 1
+        if let bestPos = result.bestPositive {
+            settings = bestPos.0
+            return true
+        } else {
+            settings = result.bestAny.0
+            return false
         }
     }
-
-    // Caller can use this to decide whether to show "Low Light Warning"
-    return canReachNonNegative
 }
