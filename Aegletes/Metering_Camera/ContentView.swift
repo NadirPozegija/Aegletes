@@ -1,9 +1,8 @@
 //
-// ContentView.swift
-// Aegletes
+//  ContentView.swift
+//  Aegletes
 //
-// Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/8/26 - Centered EV Δ badge with folder icon on top row
+//  Created by Nadir Pozegija on 3/3/26.
 //
 
 import SwiftUI
@@ -47,29 +46,45 @@ struct ContentView: View {
 
             // UI overlays
             VStack {
-                // Top row: EV badge perfectly centered, folder icon in top-right
-                ZStack {
-                    // Centered EV badge across full width
+                // Top row: EV badge centered, Low Light Warning under it, folder icon on right
+                ZStack(alignment: .top) {
+                    // Centered EV badge + Low Light Warning
                     HStack {
                         Spacer()
-                        EVBadge(evDelta: vm.evDeltaValue,
-                                isHistogramActive: showHistogram)
-                            .onTapGesture {
-                                showHistogram.toggle()
+                        VStack(spacing: 4) {
+                            EVBadge(evDelta: vm.evDeltaValue,
+                                    isHistogramActive: showHistogram)
+                                .onTapGesture {
+                                    showHistogram.toggle()
+                                }
+
+                            if vm.lowLightWarning {
+                                Text("Warning: Low Light!")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 2)
+                                    .background(
+                                        Capsule()
+                                            .fill(Color.black.opacity(0.65))
+                                    )
+                                    .foregroundStyle(.red)
+                                    .shadow(color: Color.red.opacity(0.5),
+                                            radius: 4, x: 0, y: 2)
                             }
+                        }
                         Spacer()
                     }
 
-                    // Right-aligned folder icon (does not affect badge centering)
+                    // Right-aligned folder icon (Film DB)
                     HStack {
                         Spacer()
                         Button {
-                            FilmDBHaptics.light()   // light haptic when opening the Film DB
+                            FilmDBHaptics.light()
                             onShowFilmDB?()
                         } label: {
                             Image(systemName: "folder")
                                 .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(.white)
+                                .foregroundStyle(.white)
                                 .padding(8)
                                 .background(
                                     Circle()
@@ -109,16 +124,14 @@ struct ContentView: View {
                             Text("ISO")
                                 .foregroundStyle(.white.opacity(0.8))
                                 .font(.system(size: 16, weight: .semibold, design: .serif))
-
                             ZStack {
                                 Picker("", selection: $vm.exposure.isoIndex) {
                                     ForEach(isoValues.indices, id: \.self) { idx in
                                         let value = isoValues[idx]
                                         let label = String(Int(value))
-
                                         Text(label)
                                             .fontWeight(isStandardISO(value) ? .bold : .regular)
-                                            .foregroundColor(
+                                            .foregroundStyle(
                                                 isStandardISO(value)
                                                 ? .white
                                                 : .white.opacity(0.6)
@@ -129,25 +142,25 @@ struct ContentView: View {
                                 .labelsHidden()
                                 .pickerStyle(.wheel)
                                 .frame(width: 90, height: wheelHeight)
-
                                 // Center outline band (no fill)
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(Color.white.opacity(0.25), lineWidth: 1)
                                     .frame(height: 32)
                             }
-
                             // Lock icon button (Light Meter mode only)
                             if !vm.manualMode {
                                 Button(action: {
                                     Haptics.lockToggled()
                                     vm.locks.iso.toggle()
                                 }) {
-                                    Image(systemName: vm.locks.iso ? "lock.fill" : "lock.open")
+                                    Image(systemName: vm.locks.iso ?
+                                          "lock.fill" : "lock.open")
                                         .font(.caption2.weight(.semibold))
-                                        .foregroundColor(.white)
+                                        .foregroundStyle(.white)
                                         .padding(6)
                                         .background(
-                                            Circle().fill(vm.locks.iso ? Color.red : Color.gray)
+                                            Circle().fill(vm.locks.iso ?
+                                                          Color.red : Color.gray)
                                         )
                                 }
                             }
@@ -214,9 +227,8 @@ struct ContentView: View {
                                 )
                             )
                             .frame(maxWidth: 260)
-
                             Text("Exposure Mode")
-                                .foregroundColor(.white)
+                                .foregroundStyle(.white)
                                 .font(.caption)
                         }
                         Spacer()
@@ -237,7 +249,6 @@ struct ContentView: View {
     }
 
     // MARK: - Generic parameter picker (aperture & shutter)
-
     private func paramPicker(title: String,
                              values: [String],
                              selection: Binding<Int>,
@@ -261,7 +272,9 @@ struct ContentView: View {
             ZStack {
                 Picker("", selection: selection) {
                     ForEach(values.indices, id: \.self) { idx in
-                        Text(values[idx]).tag(idx).foregroundStyle(.white)
+                        Text(values[idx])
+                            .tag(idx)
+                            .foregroundStyle(.white)
                     }
                 }
                 .labelsHidden()
@@ -280,12 +293,14 @@ struct ContentView: View {
                     Haptics.lockToggled()
                     onLockToggle()
                 }) {
-                    Image(systemName: locked ? "lock.fill" : "lock.open")
+                    Image(systemName: locked ?
+                          "lock.fill" : "lock.open")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.white)
                         .padding(6)
                         .background(
-                            Circle().fill(locked ? Color.red : Color.gray)
+                            Circle().fill(locked ?
+                                          Color.red : Color.gray)
                         )
                 }
             }
@@ -294,7 +309,6 @@ struct ContentView: View {
     }
 
     // MARK: - EV Badge
-
     private struct EVBadge: View {
         let evDelta: Double
         let isHistogramActive: Bool
@@ -324,7 +338,6 @@ struct ContentView: View {
     }
 
     // MARK: - Mode Selector (custom tinted segments)
-
     private struct ModeSelector: View {
         @Binding var isManual: Bool
 
@@ -339,12 +352,13 @@ struct ContentView: View {
                 } label: {
                     Text("Light Meter")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.white)
+                        .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                         .background(
                             Capsule()
-                                .fill(Color.orange.opacity(isManual ? 0.0 : 0.35))
+                                .fill(Color.orange.opacity(isManual ?
+                                                           0.0 : 0.35))
                         )
                 }
                 .buttonStyle(.plain)
@@ -358,12 +372,13 @@ struct ContentView: View {
                 } label: {
                     Text("Manual")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.white)
+                        .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                         .background(
                             Capsule()
-                                .fill(Color.blue.opacity(isManual ? 0.35 : 0.0))
+                                .fill(Color.blue.opacity(isManual ?
+                                                         0.35 : 0.0))
                         )
                 }
                 .buttonStyle(.plain)
@@ -377,7 +392,6 @@ struct ContentView: View {
     }
 
     // MARK: - Haptics
-
     private enum Haptics {
         static func modeChanged() {
             let generator = UIImpactFeedbackGenerator(style: .medium)

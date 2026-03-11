@@ -4,6 +4,7 @@
 //
 // Created by Nadir Pozegija on 3/3/26.
 // Edited on 3/5/26 - Revision 14
+// Edited on 3/11/26 - Track low-light warning from autoAdjust
 //
 
 import Foundation
@@ -20,6 +21,9 @@ final class AegletesViewModel: ObservableObject {
 
     // EV offset used for manual preview simulation
     @Published var previewEVOffset: Double = 0.0
+
+    // True when no combination of exposure settings can reach evDelta ≥ 0.
+    @Published var lowLightWarning: Bool = false
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -56,10 +60,12 @@ final class AegletesViewModel: ObservableObject {
     // Light-meter mode: auto adjust unlocked settings toward the scene EV
     func updateForNewSceneEV() {
         guard !manualMode else { return }
-
         var e = exposure
-        autoAdjust(settings: &e, locks: locks, targetEV: camera.sceneEV100)
+        let ok = autoAdjust(settings: &e,
+                            locks: locks,
+                            targetEV: camera.sceneEV100)
         exposure = e
+        lowLightWarning = !ok   // show warning only when no evDelta ≥ 0 is possible
     }
 
     // Manual mode: simulate exposure via preview only (no hardware changes)
@@ -69,20 +75,24 @@ final class AegletesViewModel: ObservableObject {
             camera.previewEVOffset = 0.0
             return
         }
-
         let evTarget = settingsEV100Value
         let evCamera = sceneEV100Value
-
         // Positive offset should brighten the image, so use camera - target.
         // If target EV is higher (darker settings), this becomes negative → darker preview.
         let delta = evCamera - evTarget
-
         previewEVOffset = delta
         camera.previewEVOffset = delta
     }
 
     func setManualMode(_ manual: Bool) {
         manualMode = manual
+        if manual {
+            // In manual mode, low-light warning is not relevant
+            lowLightWarning = false
+        } else {
+            // Re-run auto-adjust and warning when returning to meter mode
+            updateForNewSceneEV()
+        }
         updatePreviewEVOffsetIfNeeded()
     }
 }

@@ -66,10 +66,42 @@ func evDelta(evScene100: Double, evSettings100: Double) -> Double {
 // Auto adjust: priority shutter → aperture → ISO, respecting lock.
 // For ISO, treat one "step" as 3 indices (~1 full stop) so it behaves like before
 // even though the wheel exposes 1/3-stop ticks.
+// Helper: minimal (brightest) EV we can reach given current locks.
+private func minPossibleEV(for settings: ExposureSettings,
+                           locks: ExposureLockState) -> Double {
+    var s = settings
+
+    // Brightest aperture: smallest f-number
+    if !locks.aperture {
+        s.apertureIndex = 0
+    }
+
+    // Brightest shutter: longest time
+    if !locks.shutter {
+        s.shutterIndex = shutterValues.indices.last!
+    }
+
+    // Brightest ISO: highest sensitivity
+    if !locks.iso {
+        s.isoIndex = isoValues.indices.last!
+    }
+
+    return settingsEV100(s)
+}
+
+// Auto adjust: priority shutter → aperture → ISO, respecting lock.
+// NEW: guarantees evDelta >= 0 if physically possible, and reports whether that was possible.
 func autoAdjust(settings: inout ExposureSettings,
                 locks: ExposureLockState,
                 targetEV: Double,
-                maxIterations: Int = 16) {
+                maxIterations: Int = 16) -> Bool {
+
+    // 1) Check if there exists ANY combination with evDelta >= 0.
+    //    i.e., some settingsEV <= targetEV.
+    let minEV = minPossibleEV(for: settings, locks: locks)
+    let canReachNonNegative = (minEV <= targetEV + 1e-6)
+
+    // 2) Original greedy behavior (unchanged).
     var currentEV = settingsEV100(settings)
 
     func attemptAdjust(for keyPath: WritableKeyPath<ExposureSettings, Int>,
@@ -102,26 +134,72 @@ func autoAdjust(settings: inout ExposureSettings,
     }
 
     for _ in 0..<maxIterations {
-        let delta = targetEV - currentEV
-        if abs(delta) < 0.1 { break }
-
         var changed = false
 
-        // 1) Shutter (±1 index = ~1 stop)
         if !locks.shutter {
-            changed = attemptAdjust(for: \.shutterIndex, values: shutterValues, step: 1)
+            changed = attemptAdjust(for: \.shutterIndex,
+                                    values: shutterValues,
+                                    step: 1) || changed
         }
-
-        // 2) Aperture (±1 index = ~1 stop)
-        if !changed && !locks.aperture {
-            changed = attemptAdjust(for: \.apertureIndex, values: apertureValues, step: 1)
+        if !locks.aperture {
+            changed = attemptAdjust(for: \.apertureIndex,
+                                    values: apertureValues,
+                                    step: 1) || changed
         }
-
-        // 3) ISO (±3 indices ≈ 1 stop to keep ISO as "last resort")
-        if !changed && !locks.iso {
-            changed = attemptAdjust(for: \.isoIndex, values: isoValues, step: 3)
+        if !locks.iso {
+            // ISO “step” is 3 indices ≈ 1 stop
+            changed = attemptAdjust(for: \.isoIndex,
+                                    values: isoValues,
+                                    step: 3) || changed
         }
-
         if !changed { break }
     }
+
+    // 3) If some combination CAN achieve evDelta >= 0, clamp final result so evDelta >= 0.
+    if canReachNonNegative {
+        var delta = targetEV - currentEV       // evDelta = sceneEV - settingsEV
+        var guardIterations = 0
+
+        while delta < 0 && guardIterations < 32 {
+            var brightened = false
+
+            // Try to brighten via shutter first (longer exposure)
+            if !locks.shutter {
+                let old = settings.shutterIndex
+                if old < shutterValues.count - 1 {
+                    settings.shutterIndex = old + 1
+                    currentEV = settingsEV100(settings)
+                    brightened = true
+                }
+            }
+
+            // If we couldn't change shutter, brighten via aperture (wider, smaller f-number)
+            if !brightened && !locks.aperture {
+                let old = settings.apertureIndex
+                if old > 0 {
+                    settings.apertureIndex = old - 1
+                    currentEV = settingsEV100(settings)
+                    brightened = true
+                }
+            }
+
+            // If still no change, brighten via ISO (higher sensitivity)
+            if !brightened && !locks.iso {
+                let old = settings.isoIndex
+                if old < isoValues.count - 1 {
+                    let newIndex = min(old + 3, isoValues.count - 1) // ~1 stop
+                    settings.isoIndex = newIndex
+                    currentEV = settingsEV100(settings)
+                    brightened = true
+                }
+            }
+
+            if !brightened { break } // Can't get any brighter given locks/limits
+            delta = targetEV - currentEV
+            guardIterations += 1
+        }
+    }
+
+    // Caller can use this to decide whether to show "Low Light Warning"
+    return canReachNonNegative
 }
