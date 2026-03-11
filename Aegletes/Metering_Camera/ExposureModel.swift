@@ -59,162 +59,180 @@ func settingsEV100(_ s: ExposureSettings) -> Double {
     )
 }
 
+/// evDelta = sceneEV - settingsEV
+/// Positive: scene is brighter than settings → **overexposed** (too much light).
+/// Negative: scene is darker than settings → **underexposed** (too little light).
 func evDelta(evScene100: Double, evSettings100: Double) -> Double {
     return evScene100 - evSettings100
 }
 
-/// Auto adjust exposure settings to match the target EV.
+/// Auto adjust exposure settings to correct toward the target EV.
 ///
 /// Behavior:
-/// - Priority of *what is allowed to change*:
-///   1. Try to solve using **shutter + aperture only** (ISO fixed).
-///   2. Only if that fails, allow **ISO** to change as well.
-/// - Among all candidates with `evDelta >= 0` (sceneEV - settingsEV), choose the one
-///   with the **smallest positive evDelta** (as close to 0 as possible).
-///   Ties (or near-ties) are broken by preferring:
-///     - shutter changes first (no penalty),
-///     - then aperture changes (small penalty),
-///     - then ISO changes (large penalty).
-/// - If *no* candidate can achieve `evDelta >= 0`, choose the closest overall
-///   (min |evDelta|) and return `false` (low-light warning case).
+/// - Compute `evDelta = targetEV - settingsEV`.
+/// - We consider anything with `evDelta >= evDeltaTarget` acceptable.
+///   (evDeltaTarget = -0.1 → up to 0.1 stop under is allowed.)
+/// - If `evDelta < evDeltaTarget` (meaningfully underexposed),
+///   **brighten** by `ceil(-(delta - evDeltaTarget))` stops.
+/// - If `evDelta > evDeltaTarget` (overexposed beyond tolerance),
+///   **darken** by `floor(delta - evDeltaTarget)` stops
+///   (never intentionally go below `evDeltaTarget`).
+/// - 1 stop ≈ 1 index of shutter, 1 index of aperture, or 3 ISO indices.
+/// - Stops are spent in priority order:
+///   1. Shutter (if unlocked),
+///   2. Aperture (if unlocked),
+///   3. ISO (if unlocked).
+/// - After the main adjustment, a sanity step tries nudging the highest‑priority
+///   unlocked axis by ±1 index to get `evDelta` closer to 0 while keeping
+///   `evDelta >= evDeltaTarget`.
 ///
 /// Returns:
-/// - `true`  if a combination with `evDelta >= 0` was found
-/// - `false` otherwise.
+/// - `true`  if final `evDelta >= evDeltaTarget` (no meaningful underexposure),
+/// - `false` if final `evDelta < evDeltaTarget` (still underexposed → low-light warning).
 func autoAdjust(settings: inout ExposureSettings,
                 locks: ExposureLockState,
                 targetEV: Double) -> Bool {
 
-    let current = settings
+    let evDeltaTarget: Double = -0.1   // accept up to 0.1 stop underexposed
 
-    // Preference penalty: how "undesirable" it is to move away from the current settings.
-    //  - Shutter changes carry no penalty (free to move).
-    //  - Aperture changes are mildly penalized.
-    //  - ISO changes are strongly penalized (last resort).
-    func preferencePenalty(for candidate: ExposureSettings,
-                           from base: ExposureSettings) -> Double {
-        let apertureDist = abs(candidate.apertureIndex - base.apertureIndex)
-        let isoTicks = abs(candidate.isoIndex - base.isoIndex)
-        let isoStops = Double(isoTicks) / 3.0
+    var s = settings
+    var currentEV = settingsEV100(s)
+    var delta = targetEV - currentEV
 
-        // We ignore shutterDist in the penalty (0 weight), penalize aperture a bit,
-        // and ISO quite a bit more.
-        let apertureWeight = 0.04
-        let isoWeight = 0.15
-
-        return apertureWeight * Double(apertureDist)
-             + isoWeight * isoStops
+    // Quick exit if we're already within a tiny band around target
+    let smallTolerance: Double = 1e-3
+    if abs(delta) < smallTolerance {
+        settings = s
+        return delta >= evDeltaTarget
     }
 
-    // Search helper over a given set of ISO indices (respects locks on other axes).
-    func search(isoIndices: [Int]) -> (bestPositive: (ExposureSettings, Double /*delta*/, Double /*penalty*/)?,
-                                       bestAny: (ExposureSettings, Double /*absDelta*/)) {
+    // MARK: - Spend stops in priority order: shutter → aperture → ISO
 
-        // Baseline: current settings
-        var bestAnySettings = current
-        var bestAnyAbsDelta = abs(targetEV - settingsEV100(current))
+    if delta < evDeltaTarget {
+        // UNDEREXPOSED beyond tolerance: need to brighten.
+        // We want to move delta up to at least evDeltaTarget.
+        // Required change in EV ≈ (evDeltaTarget - delta), so:
+        let neededStops = evDeltaTarget - delta        // positive number of stops to add
+        var remainingStops = Int(ceil(neededStops))
 
-        var bestPositiveSettings: ExposureSettings?
-        var bestPositiveDelta: Double = .greatestFiniteMagnitude
-        var bestPositivePenalty: Double = .greatestFiniteMagnitude
+        // 1) Shutter: lengthen exposure time (toward the end of the array).
+        if !locks.shutter && remainingStops > 0 {
+            let maxIndex = shutterValues.count - 1
+            let available = maxIndex - s.shutterIndex          // steps to longest
+            let used = min(remainingStops, available)
+            s.shutterIndex += used
+            remainingStops -= used
+        }
 
-        let apertureRange: [Int] = locks.aperture
-            ? [current.apertureIndex]
-            : Array(apertureValues.indices)
+        // 2) Aperture: open up (toward f/1.4, index down).
+        if !locks.aperture && remainingStops > 0 {
+            let available = s.apertureIndex                    // steps to index 0
+            let used = min(remainingStops, available)
+            s.apertureIndex -= used
+            remainingStops -= used
+        }
 
-        let shutterRange: [Int] = locks.shutter
-            ? [current.shutterIndex]
-            : Array(shutterValues.indices)
+        // 3) ISO: raise ISO (3 ticks ≈ 1 stop).
+        if !locks.iso && remainingStops > 0 {
+            let maxIndex = isoValues.count - 1
+            let availableTicks = maxIndex - s.isoIndex
+            let availableStops = availableTicks / 3
+            let used = min(remainingStops, availableStops)
+            s.isoIndex += used * 3
+            remainingStops -= used
+        }
 
-        let eps: Double = 1e-4
+        currentEV = settingsEV100(s)
+        delta = targetEV - currentEV
+    } else if delta > evDeltaTarget {
+        // OVEREXPOSED beyond tolerance: need to darken.
+        // We want to move delta down toward evDeltaTarget (but not below).
+        let extra = delta - evDeltaTarget                  // how many stops to remove
+        var remainingStops = Int(floor(extra))
 
-        for isoIdx in isoIndices {
-            for apertureIdx in apertureRange {
-                for shutterIdx in shutterRange {
-                    var candidate = current
+        if remainingStops > 0 {
+            // 1) Shutter: shorten exposure time (toward faster speeds).
+            if !locks.shutter && remainingStops > 0 {
+                let available = s.shutterIndex             // steps to index 0
+                let used = min(remainingStops, available)
+                s.shutterIndex -= used
+                remainingStops -= used
+            }
 
-                    // Respect ISO lock
-                    candidate.isoIndex = locks.iso ? current.isoIndex : isoIdx
-                    candidate.apertureIndex = apertureIdx
-                    candidate.shutterIndex = shutterIdx
+            // 2) Aperture: stop down (toward higher f-numbers).
+            if !locks.aperture && remainingStops > 0 {
+                let maxIndex = apertureValues.count - 1
+                let available = maxIndex - s.apertureIndex // steps to max f
+                let used = min(remainingStops, available)
+                s.apertureIndex += used
+                remainingStops -= used
+            }
 
-                    let ev = settingsEV100(candidate)
-                    let delta = targetEV - ev
-                    let absDelta = abs(delta)
-
-                    // Track closest overall (min |delta|)
-                    if absDelta < bestAnyAbsDelta {
-                        bestAnyAbsDelta = absDelta
-                        bestAnySettings = candidate
-                    }
-
-                    // Only consider candidates on the "bright enough" side
-                    if delta >= 0 {
-                        let penalty = preferencePenalty(for: candidate, from: current)
-
-                        if bestPositiveSettings == nil {
-                            bestPositiveSettings = candidate
-                            bestPositiveDelta = delta
-                            bestPositivePenalty = penalty
-                        } else {
-                            // Primary key: smaller positive delta
-                            if delta < bestPositiveDelta - eps {
-                                bestPositiveSettings = candidate
-                                bestPositiveDelta = delta
-                                bestPositivePenalty = penalty
-                            }
-                            // Secondary key: for near-equal delta, smaller penalty
-                            else if abs(delta - bestPositiveDelta) <= eps,
-                                    penalty < bestPositivePenalty {
-                                bestPositiveSettings = candidate
-                                bestPositiveDelta = delta
-                                bestPositivePenalty = penalty
-                            }
-                        }
-                    }
-                }
+            // 3) ISO: lower ISO (3 ticks ≈ 1 stop).
+            if !locks.iso && remainingStops > 0 {
+                let availableTicks = s.isoIndex
+                let availableStops = availableTicks / 3
+                let used = min(remainingStops, availableStops)
+                s.isoIndex -= used * 3
+                remainingStops -= used
             }
         }
 
-        if let pos = bestPositiveSettings {
-            return ((pos, bestPositiveDelta, bestPositivePenalty),
-                    (bestAnySettings, bestAnyAbsDelta))
-        } else {
-            return (nil, (bestAnySettings, bestAnyAbsDelta))
+        currentEV = settingsEV100(s)
+        delta = targetEV - currentEV
+    }
+
+    // At this point, s is the main-adjusted settings.
+    // If we're still underexposed beyond tolerance, we hit bounds and couldn't fix it.
+    if delta < evDeltaTarget {
+        settings = s
+        return false
+    }
+
+    // MARK: - Sanity nudge: one index tweak on highest-priority unlocked axis
+
+    func tryNudge(_ axis: WritableKeyPath<ExposureSettings, Int>,
+                  direction: Int) {
+        let oldIndex = s[keyPath: axis]
+        let newIndex = oldIndex + direction
+
+        // Bounds check
+        if axis == \.shutterIndex {
+            guard newIndex >= 0, newIndex < shutterValues.count else { return }
+        } else if axis == \.apertureIndex {
+            guard newIndex >= 0, newIndex < apertureValues.count else { return }
+        } else if axis == \.isoIndex {
+            guard newIndex >= 0, newIndex < isoValues.count else { return }
+        }
+
+        var candidate = s
+        candidate[keyPath: axis] = newIndex
+        let ev = settingsEV100(candidate)
+        let newDelta = targetEV - ev
+
+        // Only accept if we stay within the acceptable range and get closer to 0.
+        if newDelta >= evDeltaTarget, abs(newDelta) < abs(delta) {
+            s = candidate
+            delta = newDelta
         }
     }
 
-    // Case 1: ISO is *not* locked → try to solve without touching ISO first.
-    if !locks.iso {
-        // 1A. Try shutter + aperture only (ISO fixed)
-        let resultNoISO = search(isoIndices: [current.isoIndex])
-
-        if let bestPos = resultNoISO.bestPositive {
-            settings = bestPos.0
-            return true
-        }
-
-        // 1B. Allow ISO to change as well
-        let resultFull = search(isoIndices: Array(isoValues.indices))
-
-        if let bestPos = resultFull.bestPositive {
-            settings = bestPos.0
-            return true
-        } else {
-            // No candidate with evDelta >= 0 exists at all
-            settings = resultFull.bestAny.0
-            return false
-        }
-    } else {
-        // Case 2: ISO locked → single-pass search with fixed ISO
-        let result = search(isoIndices: [current.isoIndex])
-
-        if let bestPos = result.bestPositive {
-            settings = bestPos.0
-            return true
-        } else {
-            settings = result.bestAny.0
-            return false
+    // We currently have delta >= evDeltaTarget. To get closer to 0,
+    // we want to "darken" a bit (reduce delta's magnitude toward 0).
+    if delta > evDeltaTarget {
+        // Priority: shutter → aperture → ISO (respecting locks)
+        if !locks.shutter {
+            // Darken shutter = shorter time = move one index toward 0.
+            tryNudge(\.shutterIndex, direction: -1)
+        } else if !locks.aperture {
+            // Darken aperture = higher f-number = move +1.
+            tryNudge(\.apertureIndex, direction: +1)
+        } else if !locks.iso {
+            // Darken ISO = lower ISO = move -1 (1/3-stop).
+            tryNudge(\.isoIndex, direction: -1)
         }
     }
+
+    settings = s
+    return delta >= evDeltaTarget
 }
