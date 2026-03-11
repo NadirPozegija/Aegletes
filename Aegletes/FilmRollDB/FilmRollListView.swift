@@ -1,8 +1,8 @@
 //
-// FilmRollListView.swift
-// Aegletes
+//  FilmRollListView.swift
+//  Aegletes
 //
-// Main Film DB list: stacks, HeroView usage, expand/collapse
+//  Main Film DB list: stacks, HeroView usage, expand/collapse
 //
 
 import SwiftUI
@@ -20,7 +20,7 @@ struct FilmStackListView: View {
     let rolls: [FilmRoll]
 
     // UI state
-    @State var expandedStackIDs: Set<FilmIdentity.ID> = []
+    @State private var expandedStackIDs: Set<FilmIdentity> = []
 
     // For generic status confirmation (non-loaded transitions)
     @State var pendingStatusRoll: FilmRoll?
@@ -31,7 +31,7 @@ struct FilmStackListView: View {
     @State var rollBeingLoaded: FilmRoll?
     @State var selectedCameraForLoad: String = ""
     @State var selectedEffectiveISOForLoad: Double = 0
-    
+
     // Secondary confirmation for deletion of a Roll Entry
     @State private var pendingDeletionRolls: [FilmRoll] = []
     @State private var showingDeleteConfirmation = false
@@ -41,24 +41,23 @@ struct FilmStackListView: View {
             let stacks = buildStacks(from: rolls)
 
             if stacks.isEmpty {
-                Text("No rolls yet. Use Add Roll(s) to create your first entry.")
-                    .foregroundColor(.secondary)
+                Text("No rolls yet.\nUse Add Roll(s) to create your first entry.")
+                    .foregroundStyle(.secondary)
             } else {
-                ForEach(stacks, id: \.identity.id) { stack in
+                ForEach(stacks, id: \.identity) { stack in
                     if stack.rolls.count > 1 {
                         // Multi-roll: Hero row (stack) + optional expanded child rows
-
                         FilmStackHeroView(
                             identity: stack.identity,
                             rolls: stack.rolls,
-                            isExpanded: expandedStackIDs.contains(stack.identity.id)
+                            isExpanded: expandedStackIDs.contains(stack.identity)
                         )
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            if expandedStackIDs.contains(stack.identity.id) {
-                                expandedStackIDs.remove(stack.identity.id)
+                            if expandedStackIDs.contains(stack.identity) {
+                                expandedStackIDs.remove(stack.identity)
                             } else {
-                                expandedStackIDs.insert(stack.identity.id)
+                                expandedStackIDs.insert(stack.identity)
                             }
                             FilmDBHaptics.light()   // hero expand/collapse
                         }
@@ -75,22 +74,19 @@ struct FilmStackListView: View {
                         }
 
                         // Expanded entries, sequentially named, each with its own swipe actions
-                        if expandedStackIDs.contains(stack.identity.id) {
+                        if expandedStackIDs.contains(stack.identity) {
                             ForEach(Array(stack.rolls.enumerated()), id: \.element.id) { index, roll in
                                 NavigationLink(destination: FilmRollDetailView(roll: roll)) {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Roll \(index + 1)")
-                                                .font(.subheadline.weight(.semibold))
-                                            rollSubheadline(for: roll)
-                                        }
-                                        Spacer()
-                                    }
+                                    FilmRollRowView(
+                                        title: "Roll \(index + 1)",
+                                        roll: roll,
+                                        titleFont: .subheadline.weight(.semibold)
+                                    )
                                 }
                                 //have the sub rows inherit the color of the top card of the stack for clarity
                                 .listRowBackground(
                                     colorScheme == .light ?
-                                    Color.LightThemeStackColor : Color.DarkThemeStackColor
+                                        Color.LightThemeStackColor : Color.DarkThemeStackColor
                                 )
                                 .simultaneousGesture(
                                     TapGesture().onEnded {
@@ -106,7 +102,6 @@ struct FilmStackListView: View {
                                     } label: {
                                         Image(systemName: "trash")
                                     }
-
                                     // Advance status for this specific roll
                                     Button {
                                         FilmDBHaptics.medium()
@@ -121,14 +116,11 @@ struct FilmStackListView: View {
                     } else if let roll = stack.rolls.first {
                         // Single roll: normal row that goes straight to detail
                         NavigationLink(destination: FilmRollDetailView(roll: roll)) {
-                            HStack(alignment: .center, spacing: 12) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(heading(for: stack.identity))
-                                        .font(.headline)
-                                    rollSubheadline(for: roll)
-                                }
-                                Spacer()
-                            }
+                            FilmRollRowView(
+                                title: heading(for: stack.identity),
+                                roll: roll,
+                                titleFont: .headline
+                            )
                         }
                         .simultaneousGesture(
                             TapGesture().onEnded {
@@ -144,7 +136,6 @@ struct FilmStackListView: View {
                             } label: {
                                 Image(systemName: "trash")
                             }
-
                             // Advance status for this roll
                             Button {
                                 FilmDBHaptics.medium()
@@ -193,13 +184,13 @@ struct FilmStackListView: View {
             Text(statusAlertMessage())
         }
         .alert(
-            pendingDeletionRolls.count > 1 ? "Delete Stack?" : "Delete Roll?",
+            pendingDeletionRolls.count > 1 ?
+                "Delete Stack?" : "Delete Roll?",
             isPresented: $showingDeleteConfirmation
         ) {
             Button("Cancel", role: .cancel) {
                 pendingDeletionRolls.removeAll()
             }
-
             Button("Delete", role: .destructive) {
                 for roll in pendingDeletionRolls {
                     filmStore.removeRoll(roll)
