@@ -256,7 +256,9 @@
 				DEVELOPMENT_TEAM = YX8253X795;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Need the camera to measure the light levels bud";
+				INFOPLIST_FILE = Aegletes/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
+				INFOPLIST_KEY_NSCameraUsageDescription = "<key>NSCameraUsageDescription</key>\n<string>Aegletes uses the camera to measure scene brightness for light metering.</string>";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -292,7 +294,9 @@
 				DEVELOPMENT_TEAM = YX8253X795;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Need the camera to measure the light levels bud";
+				INFOPLIST_FILE = Aegletes/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
+				INFOPLIST_KEY_NSCameraUsageDescription = "<key>NSCameraUsageDescription</key>\n<string>Aegletes uses the camera to measure scene brightness for light metering.</string>";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
