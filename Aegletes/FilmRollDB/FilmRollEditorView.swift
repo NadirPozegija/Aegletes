@@ -12,10 +12,9 @@ struct FilmRollEditorView: View {
     let onComplete: (FilmRoll?) -> Void
 
     @State private var notes: String = ""
-    @State private var manufacturer: String =
-        FilmRollDatabase.manufacturerOptions.first ?? ""
+    @State private var manufacturer: String = "" //start empty
     @State private var stock: String = ""
-    @State private var filmType: FilmType = .color
+    @State private var filmType: FilmType? = nil
     @State private var format: FilmFormat = .thirtyFive
     @State private var boxISO: Double = FilmRollDatabase.boxISOOptions.first ?? 100
     @State private var rollCountText: String = "1"
@@ -26,26 +25,28 @@ struct FilmRollEditorView: View {
                 TextField("Notes", text: $notes, axis: .vertical)
 
                 Picker("Manufacturer", selection: $manufacturer) {
-                    ForEach(FilmRollDatabase.manufacturerOptions, id: \.self) { m in
-                        Text(m).tag(m)
+                    Text("Select a Manufacturer").tag("")
+                        ForEach(FilmRollDatabase.manufacturerOptions, id: \.self) { m in
+                            Text(m).tag(m).bold().italic()
                     }
                 }
 
-                TextField("Custom manufacturer", text: $manufacturer)
+                TextField("Or, enter custom manufacturer", text: $manufacturer)
 
                 if let stocks = FilmRollDatabase.stockCatalog[manufacturer], !stocks.isEmpty {
                     Picker("Stock", selection: $stock) {
                         ForEach(stocks, id: \.self) { s in
-                            Text(s).tag(s)
+                            Text(s).tag(s).bold().italic()
                         }
                     }
                 }
 
-                TextField("Custom stock", text: $stock)
+                TextField("Or, enter custom stock", text: $stock)
 
                 Picker("Film Type", selection: $filmType) {
+                    Text("Color/B&W/Slide").tag(FilmType?.none)
                     ForEach(FilmRollDatabase.filmTypeOptions) { t in
-                        Text(t.rawValue).tag(t)
+                        Text(t.rawValue).tag(Optional(t))
                     }
                 }
 
@@ -85,6 +86,9 @@ struct FilmRollEditorView: View {
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedManufacturer = manufacturer.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedStock = stock.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // If user never picks a film type, default to .color
+        let effectiveFilmType = filmType ?? .color
 
         let requestedCount = Int(rollCountText) ?? 1
         let count = max(1, requestedCount)
@@ -94,7 +98,7 @@ struct FilmRollEditorView: View {
                 notes: trimmedNotes,
                 manufacturer: trimmedManufacturer,
                 stock: trimmedStock,
-                filmType: filmType,
+                filmType: effectiveFilmType,
                 format: format,
                 boxISO: boxISO,
                 effectiveISO: boxISO,   // default EI = box ISO

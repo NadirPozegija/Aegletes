@@ -66,7 +66,7 @@ struct FilmRollEditView: View {
                     }
                 }
 
-                TextField("Enter a Custom Stock", text: $stock)
+                TextField("Or, enter a custom stock", text: $stock)
 
                 Picker("Film Type", selection: $filmType) {
                     ForEach(FilmRollDatabase.filmTypeOptions) { t in
