@@ -27,8 +27,19 @@ struct ContentView: View {
         ZStack {
             // CI-based preview in the back
             CameraPreview(feed: vm.camera)
-                .onAppear { vm.camera.start() }
-                .onDisappear { vm.camera.stop() }
+                .onAppear {
+                    vm.checkAndRequestCameraAuthorization()
+                }
+                .onDisappear {
+                    vm.camera.stop()
+                }
+                .onChange(of: vm.cameraAuthState) { _, newValue in
+                    if newValue == .authorized {
+                        vm.camera.start()
+                    } else {
+                        vm.camera.stop()
+                    }
+                }
                 .gesture(
                     MagnificationGesture()
                         .updating($pinchScale) { value, state, _ in
@@ -46,7 +57,7 @@ struct ContentView: View {
 
             // UI overlays
             VStack {
-                // Top row: EV badge centered, Low Light Warning under it, folder icon on right
+                // Top row: EV badge centered, Low Light warning directly under it, folder icon on right
                 ZStack(alignment: .top) {
                     // Centered EV badge + Low Light Warning
                     HStack {
@@ -124,11 +135,13 @@ struct ContentView: View {
                             Text("ISO")
                                 .foregroundStyle(.white.opacity(0.8))
                                 .font(.system(size: 16, weight: .semibold, design: .serif))
+
                             ZStack {
                                 Picker("", selection: $vm.exposure.isoIndex) {
                                     ForEach(isoValues.indices, id: \.self) { idx in
                                         let value = isoValues[idx]
                                         let label = String(Int(value))
+
                                         Text(label)
                                             .fontWeight(isStandardISO(value) ? .bold : .regular)
                                             .foregroundStyle(
@@ -142,11 +155,13 @@ struct ContentView: View {
                                 .labelsHidden()
                                 .pickerStyle(.wheel)
                                 .frame(width: 90, height: wheelHeight)
+
                                 // Center outline band (no fill)
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(Color.white.opacity(0.25), lineWidth: 1)
                                     .frame(height: 32)
                             }
+
                             // Lock icon button (Light Meter mode only)
                             if !vm.manualMode {
                                 Button(action: {
@@ -227,6 +242,7 @@ struct ContentView: View {
                                 )
                             )
                             .frame(maxWidth: 260)
+
                             Text("Exposure Mode")
                                 .foregroundStyle(.white)
                                 .font(.caption)
@@ -245,6 +261,121 @@ struct ContentView: View {
             }
             .padding(.bottom, 0)
             .zIndex(1)
+
+            // Camera permission overlay
+            if vm.cameraAuthState == .denied || vm.cameraAuthState == .restricted {
+                Color.black.opacity(0.7)
+                    .ignoresSafeArea()
+
+                VStack(spacing: 12) {
+                    Text("Camera Access Needed")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+
+                    Text("Grant camera permission in Settings to use the light meter.")
+                        .font(.subheadline)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.white.opacity(0.8))
+                        .padding(.horizontal, 24)
+
+                    Button {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Text("Open Settings")
+                            .font(.system(size: 15, weight: .semibold))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule().fill(Color.white)
+                            )
+                            .foregroundStyle(.black)
+                    }
+                }
+            }
+        }
+        // Camera permission overlay
+        if vm.cameraAuthState == .denied || vm.cameraAuthState == .restricted {
+            Color.black.opacity(0.7)
+                .ignoresSafeArea()
+
+            VStack(spacing: 12) {
+                Text("Camera Access Needed")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+
+                Text("Grant camera permission in Settings to use the light meter.")
+                    .font(.subheadline)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.white.opacity(0.8))
+                    .padding(.horizontal, 24)
+
+                Button {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    Text("Open Settings")
+                        .font(.system(size: 15, weight: .semibold))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule().fill(Color.white)
+                        )
+                        .foregroundStyle(.black)
+                }
+            }
+        }
+
+        // Camera runtime error / interruption overlay (only when authorized)
+        if vm.cameraAuthState == .authorized &&
+            (vm.camera.sessionInterrupted || vm.camera.sessionErrorMessage != nil) {
+
+            Color.black.opacity(0.55)
+                .ignoresSafeArea()
+
+            VStack(spacing: 10) {
+                if vm.camera.sessionInterrupted {
+                    Text("Camera Temporarily Unavailable")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+
+                    Text("Another app is using the camera or the system has paused capture.")
+                        .font(.subheadline)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.white.opacity(0.8))
+                        .padding(.horizontal, 24)
+                } else if let message = vm.camera.sessionErrorMessage {
+                    Text("Camera Error")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+
+                    Text(message)
+                        .font(.subheadline)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.white.opacity(0.8))
+                        .padding(.horizontal, 24)
+                }
+
+                Button {
+                    // Try to restart after an error/interruption
+                    vm.camera.sessionErrorMessage = nil
+                    vm.camera.sessionInterrupted = false
+                    if vm.cameraAuthState == .authorized {
+                        vm.camera.start()
+                    }
+                } label: {
+                    Text("Try Again")
+                        .font(.system(size: 15, weight: .semibold))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule().fill(Color.white)
+                        )
+                        .foregroundStyle(.black)
+                }
+            }
         }
     }
 

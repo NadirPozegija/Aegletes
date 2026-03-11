@@ -1,15 +1,20 @@
-//
-// AegletesViewModel.swift
+//// AegletesViewModel.swift
 // Aegletes
 //
 // Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/5/26 - Revision 14
-// Edited on 3/11/26 - Track low-light warning from autoAdjust
 //
 
 import Foundation
 import SwiftUI
 import Combine
+import AVFoundation
+
+enum CameraAuthorizationState {
+    case unknown
+    case authorized
+    case denied
+    case restricted
+}
 
 final class AegletesViewModel: ObservableObject {
     @Published var camera = CameraFeed()
@@ -24,6 +29,9 @@ final class AegletesViewModel: ObservableObject {
 
     // True when no combination of exposure settings can reach evDelta ≥ 0.
     @Published var lowLightWarning: Bool = false
+
+    // Camera authorization state (for permission UI and session control)
+    @Published var cameraAuthState: CameraAuthorizationState = .unknown
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -45,6 +53,8 @@ final class AegletesViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
+    // MARK: - Derived values
+
     var sceneEV100Value: Double {
         camera.sceneEV100
     }
@@ -57,7 +67,10 @@ final class AegletesViewModel: ObservableObject {
         evDelta(evScene100: sceneEV100Value, evSettings100: settingsEV100Value)
     }
 
-    // Light-meter mode: auto adjust unlocked settings toward the scene EV
+    // MARK: - Auto adjustment (Light Meter mode)
+
+    /// Light-meter mode: auto adjust unlocked settings toward the scene EV.
+    /// Also track when no combination can achieve evDelta ≥ 0 (low-light warning).
     func updateForNewSceneEV() {
         guard !manualMode else { return }
         var e = exposure
@@ -68,18 +81,23 @@ final class AegletesViewModel: ObservableObject {
         lowLightWarning = !ok   // show warning only when no evDelta ≥ 0 is possible
     }
 
-    // Manual mode: simulate exposure via preview only (no hardware changes)
+    // MARK: - Manual preview EV offset
+
+    /// Manual mode: simulate exposure via preview only (no hardware changes).
     func updatePreviewEVOffsetIfNeeded() {
         guard manualMode else {
             previewEVOffset = 0.0
             camera.previewEVOffset = 0.0
             return
         }
+
         let evTarget = settingsEV100Value
         let evCamera = sceneEV100Value
+
         // Positive offset should brighten the image, so use camera - target.
         // If target EV is higher (darker settings), this becomes negative → darker preview.
         let delta = evCamera - evTarget
+
         previewEVOffset = delta
         camera.previewEVOffset = delta
     }
@@ -87,12 +105,36 @@ final class AegletesViewModel: ObservableObject {
     func setManualMode(_ manual: Bool) {
         manualMode = manual
         if manual {
-            // In manual mode, low-light warning is not relevant
+            // Low-light warning is only relevant in meter mode
             lowLightWarning = false
-        } else {
-            // Re-run auto-adjust and warning when returning to meter mode
-            updateForNewSceneEV()
         }
         updatePreviewEVOffsetIfNeeded()
+    }
+
+    // MARK: - Camera authorization
+
+    func checkAndRequestCameraAuthorization() {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        switch status {
+        case .authorized:
+            cameraAuthState = .authorized
+
+        case .notDetermined:
+            cameraAuthState = .unknown
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                DispatchQueue.main.async {
+                    self?.cameraAuthState = granted ? .authorized : .denied
+                }
+            }
+
+        case .denied:
+            cameraAuthState = .denied
+
+        case .restricted:
+            cameraAuthState = .restricted
+
+        @unknown default:
+            cameraAuthState = .restricted
+        }
     }
 }

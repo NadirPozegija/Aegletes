@@ -1,9 +1,8 @@
 //
-// CameraFeed.swift
-// Aegletes
+//  CameraFeed.swift
+//  Aegletes
 //
-// Created by Nadir Pozegija on 3/3/26.
-// Edited on 3/10/26 - Moved AVCaptureSession off of main thread to avoid UI hang ups
+//  Created by Nadir Pozegija on 3/3/26.
 //
 
 import AVFoundation
@@ -31,6 +30,10 @@ final class CameraFeed: NSObject,
     // Brightness histogram bins (0..1 fractions, 256 bins, dark → bright)
     @Published var histogramBins: [CGFloat] = Array(repeating: 0, count: 256)
 
+    // Session health
+    @Published var sessionErrorMessage: String?
+    @Published var sessionInterrupted: Bool = false
+
     private let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "CameraFeedQueue")
     private var device: AVCaptureDevice?
@@ -49,9 +52,14 @@ final class CameraFeed: NSObject,
     override init() {
         super.init()
         configureSession()
+        setupSessionObservers()
     }
 
-    // MARK: - Session control (moved off main thread)
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - Session control (off main thread)
 
     func start() {
         queue.async { [weak self] in
@@ -96,7 +104,10 @@ final class CameraFeed: NSObject,
             device.unlockForConfiguration()
             mode = .auto
         } catch {
-            // If configuration fails, just leave defaults
+            // If configuration fails, leave defaults and report error
+            DispatchQueue.main.async {
+                self.sessionErrorMessage = "Unable to configure camera exposure."
+            }
         }
 
         // Request BGRA so we can easily build both CIImage and Metal textures
@@ -114,10 +125,59 @@ final class CameraFeed: NSObject,
         session.commitConfiguration()
     }
 
-    func makePreviewLayer() -> AVCaptureVideoPreviewLayer {
-        let layer = AVCaptureVideoPreviewLayer(session: session)
-        layer.videoGravity = .resizeAspectFill
-        return layer
+    // MARK: - Session observers
+
+    private func setupSessionObservers() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleRuntimeError(_:)),
+            name: AVCaptureSession.runtimeErrorNotification,
+            object: session
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleInterruption(_:)),
+            name: AVCaptureSession.interruptionEndedNotification,
+            object: session
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleInterruptionEnded(_:)),
+            name: AVCaptureSession.interruptionEndedNotification,
+            object: session
+        )
+    }
+
+    @objc private func handleRuntimeError(_ notification: Notification) {
+        guard let error = notification.userInfo?[AVCaptureSessionErrorKey] as? NSError else {
+            DispatchQueue.main.async {
+                self.sessionErrorMessage = "Camera failed with an unknown error."
+            }
+            return
+        }
+
+        DispatchQueue.main.async {
+            self.sessionErrorMessage = error.localizedDescription
+            self.sessionInterrupted = false
+        }
+
+        // Stop the session to avoid spinning in a bad state
+        stop()
+    }
+
+    @objc private func handleInterruption(_ notification: Notification) {
+        DispatchQueue.main.async {
+            self.sessionInterrupted = true
+            self.sessionErrorMessage = nil
+        }
+    }
+
+    @objc private func handleInterruptionEnded(_ notification: Notification) {
+        DispatchQueue.main.async {
+            self.sessionInterrupted = false
+        }
     }
 
     // MARK: - Zoom
