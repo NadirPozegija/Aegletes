@@ -11,6 +11,7 @@ import Foundation
 import Combine
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import os.log
 
 enum ExposureControlMode {
     case auto
@@ -49,6 +50,9 @@ final class CameraFeed: NSObject,
     // Track whether we're using the iPhone's AE as a light meter or full manual control
     private(set) var mode: ExposureControlMode = .auto
 
+    // Logger
+    private let logger = Logger(subsystem: "com.aegletes.app", category: "CameraFeed")
+
     override init() {
         super.init()
         configureSession()
@@ -64,6 +68,7 @@ final class CameraFeed: NSObject,
     func start() {
         queue.async { [weak self] in
             guard let self = self, !self.session.isRunning else { return }
+            self.logger.debug("Starting capture session")
             self.session.startRunning()
         }
     }
@@ -71,6 +76,7 @@ final class CameraFeed: NSObject,
     func stop() {
         queue.async { [weak self] in
             guard let self = self, self.session.isRunning else { return }
+            self.logger.debug("Stopping capture session")
             self.session.stopRunning()
         }
     }
@@ -84,10 +90,21 @@ final class CameraFeed: NSObject,
         guard
             let device = AVCaptureDevice.default(.builtInWideAngleCamera,
                                                  for: .video,
-                                                 position: .back),
+                                                 position: .back)
+        else {
+            logger.error("Unable to get default wide angle camera")
+            session.commitConfiguration()
+            return
+        }
+
+        guard
             let input = try? AVCaptureDeviceInput(device: device),
             session.canAddInput(input)
-        else { return }
+        else {
+            logger.error("Unable to create or add AVCaptureDeviceInput")
+            session.commitConfiguration()
+            return
+        }
 
         self.device = device
         session.addInput(input)
@@ -103,8 +120,9 @@ final class CameraFeed: NSObject,
             }
             device.unlockForConfiguration()
             mode = .auto
+            logger.debug("Camera configured for continuous auto exposure")
         } catch {
-            // If configuration fails, leave defaults and report error
+            logger.error("Failed to configure camera exposure: \(error.localizedDescription, privacy: .public)")
             DispatchQueue.main.async {
                 self.sessionErrorMessage = "Unable to configure camera exposure."
             }
@@ -120,6 +138,8 @@ final class CameraFeed: NSObject,
         videoOutput.alwaysDiscardsLateVideoFrames = true
         if session.canAddOutput(videoOutput) {
             session.addOutput(videoOutput)
+        } else {
+            logger.error("Unable to add video output to capture session")
         }
 
         session.commitConfiguration()
@@ -138,7 +158,7 @@ final class CameraFeed: NSObject,
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleInterruption(_:)),
-            name: AVCaptureSession.interruptionEndedNotification,
+            name: AVCaptureSession.wasInterruptedNotification,
             object: session
         )
 
@@ -151,23 +171,21 @@ final class CameraFeed: NSObject,
     }
 
     @objc private func handleRuntimeError(_ notification: Notification) {
-        guard let error = notification.userInfo?[AVCaptureSessionErrorKey] as? NSError else {
-            DispatchQueue.main.async {
-                self.sessionErrorMessage = "Camera failed with an unknown error."
-            }
-            return
-        }
+        let nsError = notification.userInfo?[AVCaptureSessionErrorKey] as? NSError
+        let message = nsError?.localizedDescription ?? "Camera failed with an unknown error."
+
+        logger.error("AVCaptureSession runtime error: \(message, privacy: .public)")
 
         DispatchQueue.main.async {
-            self.sessionErrorMessage = error.localizedDescription
+            self.sessionErrorMessage = message
             self.sessionInterrupted = false
         }
 
-        // Stop the session to avoid spinning in a bad state
         stop()
     }
 
     @objc private func handleInterruption(_ notification: Notification) {
+        logger.debug("AVCaptureSession was interrupted")
         DispatchQueue.main.async {
             self.sessionInterrupted = true
             self.sessionErrorMessage = nil
@@ -175,6 +193,7 @@ final class CameraFeed: NSObject,
     }
 
     @objc private func handleInterruptionEnded(_ notification: Notification) {
+        logger.debug("AVCaptureSession interruption ended")
         DispatchQueue.main.async {
             self.sessionInterrupted = false
         }
@@ -193,7 +212,7 @@ final class CameraFeed: NSObject,
                 device.videoZoomFactor = clamped
                 device.unlockForConfiguration()
             } catch {
-                // Ignore zoom errors
+                self.logger.error("Failed to set zoom: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -210,15 +229,17 @@ final class CameraFeed: NSObject,
                         device.exposureMode = .continuousAutoExposure
                     }
                     self.mode = .auto
+                    self.logger.debug("Switched to auto exposure mode")
                 } else {
                     if device.isExposureModeSupported(.locked) {
                         device.exposureMode = .locked
                     }
                     self.mode = .manual
+                    self.logger.debug("Switched to manual exposure mode")
                 }
                 device.unlockForConfiguration()
             } catch {
-                // Ignore configuration errors for now
+                self.logger.error("Failed to change exposure mode: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -249,9 +270,10 @@ final class CameraFeed: NSObject,
                                              iso: clampedISO,
                                              completionHandler: nil)
                 self.mode = .manual
+                self.logger.debug("Applied manual exposure: ISO \(iso, privacy: .public), shutter \(shutter, privacy: .public)")
                 device.unlockForConfiguration()
             } catch {
-                // Ignore manual exposure errors
+                self.logger.error("Failed to apply manual exposure: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
