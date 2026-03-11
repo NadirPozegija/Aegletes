@@ -3,7 +3,7 @@
 //  Aegletes
 //
 //  Created by Nadir Pozegija on 3/3/26.
-//
+// //Revised 3/11/26. Added Permission overlays and session error logs
 
 import SwiftUI
 import UIKit
@@ -294,86 +294,53 @@ struct ContentView: View {
                     }
                 }
             }
-        }
-        // Camera permission overlay
-        if vm.cameraAuthState == .denied || vm.cameraAuthState == .restricted {
-            Color.black.opacity(0.7)
-                .ignoresSafeArea()
 
-            VStack(spacing: 12) {
-                Text("Camera Access Needed")
-                    .font(.headline)
-                    .foregroundStyle(.white)
+            // Camera runtime error / interruption overlay (only when authorized)
+            if vm.cameraAuthState == .authorized &&
+               (vm.camera.sessionInterrupted || vm.camera.sessionErrorMessage != nil) {
 
-                Text("Grant camera permission in Settings to use the light meter.")
-                    .font(.subheadline)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.white.opacity(0.8))
-                    .padding(.horizontal, 24)
+                Color.black.opacity(0.55)
+                    .ignoresSafeArea()
 
-                Button {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
+                VStack(spacing: 10) {
+                    if vm.camera.sessionInterrupted {
+                        Text("Camera Temporarily Unavailable")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+
+                        Text("Another app is using the camera or the system has paused capture.")
+                            .font(.subheadline)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.primary.opacity(0.8))
+                            .padding(.horizontal, 24)
+                    } else if let message = vm.camera.sessionErrorMessage {
+                        Text("Camera Error")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+
+                        Text(message)
+                            .font(.subheadline)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.primary.opacity(0.8))
+                            .padding(.horizontal, 24)
                     }
-                } label: {
-                    Text("Open Settings")
-                        .font(.system(size: 15, weight: .semibold))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(
-                            Capsule().fill(Color.white)
-                        )
-                        .foregroundStyle(.black)
-                }
-            }
-        }
 
-        // Camera runtime error / interruption overlay (only when authorized)
-        if vm.cameraAuthState == .authorized &&
-            (vm.camera.sessionInterrupted || vm.camera.sessionErrorMessage != nil) {
-
-            Color.black.opacity(0.55)
-                .ignoresSafeArea()
-
-            VStack(spacing: 10) {
-                if vm.camera.sessionInterrupted {
-                    Text("Camera Temporarily Unavailable")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-
-                    Text("Another app is using the camera or the system has paused capture.")
-                        .font(.subheadline)
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.white.opacity(0.8))
-                        .padding(.horizontal, 24)
-                } else if let message = vm.camera.sessionErrorMessage {
-                    Text("Camera Error")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-
-                    Text(message)
-                        .font(.subheadline)
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.white.opacity(0.8))
-                        .padding(.horizontal, 24)
-                }
-
-                Button {
-                    // Try to restart after an error/interruption
-                    vm.camera.sessionErrorMessage = nil
-                    vm.camera.sessionInterrupted = false
-                    if vm.cameraAuthState == .authorized {
-                        vm.camera.start()
+                    Button {
+                        vm.camera.sessionErrorMessage = nil
+                        vm.camera.sessionInterrupted = false
+                        if vm.cameraAuthState == .authorized {
+                            vm.camera.start()
+                        }
+                    } label: {
+                        Text("Try Again")
+                            .font(.system(size: 15, weight: .semibold))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule().fill(Color.white)
+                            )
+                            .foregroundStyle(.black)
                     }
-                } label: {
-                    Text("Try Again")
-                        .font(.system(size: 15, weight: .semibold))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(
-                            Capsule().fill(Color.white)
-                        )
-                        .foregroundStyle(.black)
                 }
             }
         }

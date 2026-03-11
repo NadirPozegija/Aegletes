@@ -8,6 +8,7 @@ import Foundation
 import SwiftUI
 import Combine
 import AVFoundation
+import os.log
 
 enum CameraAuthorizationState {
     case unknown
@@ -34,6 +35,7 @@ final class AegletesViewModel: ObservableObject {
     @Published var cameraAuthState: CameraAuthorizationState = .unknown
 
     private var cancellables = Set<AnyCancellable>()
+    private let logger = Logger(subsystem: "com.aegletes.app", category: "ViewModel")
 
     init() {
         exposure = ExposureSettings(
@@ -118,23 +120,29 @@ final class AegletesViewModel: ObservableObject {
         switch status {
         case .authorized:
             cameraAuthState = .authorized
+            logger.debug("Camera authorization: authorized")
 
         case .notDetermined:
             cameraAuthState = .unknown
+            logger.debug("Camera authorization: requesting access")
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                 DispatchQueue.main.async {
                     self?.cameraAuthState = granted ? .authorized : .denied
+                    self?.logger.debug("Camera authorization request result: \(granted ? "granted" : "denied", privacy: .public)")
                 }
             }
 
         case .denied:
             cameraAuthState = .denied
+            logger.debug("Camera authorization: denied")
 
         case .restricted:
             cameraAuthState = .restricted
+            logger.debug("Camera authorization: restricted")
 
         @unknown default:
             cameraAuthState = .restricted
+            logger.debug("Camera authorization: unknown status")
         }
     }
 }
