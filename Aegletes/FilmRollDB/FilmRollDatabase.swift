@@ -6,7 +6,7 @@
 // Edited on 3/8/26 - FilmType, notes, JSON DB, store, camera list management, FilmIdentity
 // Edited on 3/9/26 - Preserve cameraNames independent of rolls (no clearing when rolls = []).
 // Edited on 3/9/26 - Added FilmRollStore.loadRoll(...) for shared "load into camera" workflow.
-//
+// Edited on 3//11/26 - Added error handling and logging to the Database JSON load/decode functions. this serves as a checkpoint for Prod3
 
 import Foundation
 import Combine
