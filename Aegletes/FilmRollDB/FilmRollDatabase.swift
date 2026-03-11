@@ -10,6 +10,7 @@
 
 import Foundation
 import Combine
+import os.log
 
 // MARK: - Supporting Types
 
@@ -40,6 +41,8 @@ enum FilmType: String, CaseIterable, Codable, Identifiable {
     var id: String { rawValue }
 }
 
+private let logger = Logger(subsystem: "com.aegletes.app", category: "FilmRollDatabase")
+
 // MARK: - Core Entity
 
 struct FilmRoll: Identifiable, Codable, Equatable {
@@ -47,7 +50,7 @@ struct FilmRoll: Identifiable, Codable, Equatable {
     var id: UUID
 
     // Notes / label
-    /// Freeform notes about the roll (was previously "label").
+    /// Freeform notes about the roll.
     var notes: String
 
     // Film characteristics
@@ -415,26 +418,59 @@ struct FilmRollDatabase: Codable {
     /// Load database from a JSON file at the given URL.
     /// Returns empty DB on failure.
     static func load(from url: URL) -> FilmRollDatabase {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
         do {
             let data = try Data(contentsOf: url)
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            var db = try decoder.decode(FilmRollDatabase.self, from: data)
-            // Ensure sentinel + roll cameras are merged into whatever was decoded.
-            db.rebuildCameraNames()
+            let db = try decoder.decode(FilmRollDatabase.self, from: data)
+
+            // Rebuild any derived state here if you have helpers for it
+            // e.g. db.rebuildCameraNamesIfNeeded()
+
             return db
         } catch {
-            return FilmRollDatabase()
+            logger.error("Failed to load FilmRollDatabase from \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            // Fall back to an empty DB rather than crashing
+            return FilmRollDatabase(rolls: [], cameraNameSet: ["No camera"])
         }
     }
 
     /// Save database to a JSON file at the given URL.
-    func save(to url: URL) throws {
+    func save(to url: URL) {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(self)
-        try data.write(to: url, options: [.atomic])
+        encoder.outputFormatting = [.prettyPrinted]
+
+        let fm = FileManager.default
+        let backupURL = url.appendingPathExtension("bak")
+
+        do {
+            // If there is an existing DB file, back it up first
+            if fm.fileExists(atPath: url.path) {
+                // Remove old backup if present
+                if fm.fileExists(atPath: backupURL.path) {
+                    do {
+                        try fm.removeItem(at: backupURL)
+                    } catch {
+                        logger.error("Failed to remove old FilmRollDatabase backup at \(backupURL.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                    }
+                }
+
+                do {
+                    try fm.copyItem(at: url, to: backupURL)
+                    logger.debug("Backed up FilmRollDatabase to \(backupURL.path, privacy: .public)")
+                } catch {
+                    logger.error("Failed to create FilmRollDatabase backup at \(backupURL.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                }
+            }
+
+            let data = try encoder.encode(self)
+            try data.write(to: url, options: [.atomic])
+            logger.debug("Saved FilmRollDatabase to \(url.path, privacy: .public)")
+        } catch {
+            logger.error("Failed to save FilmRollDatabase to \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
     }
 }
 
@@ -464,11 +500,7 @@ final class FilmRollStore: ObservableObject {
             .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
             .sink { [weak self] db in
                 guard let self = self else { return }
-                do {
-                    try db.save(to: self.storeURL)
-                } catch {
-                    // For now, ignore save errors; could add logging later.
-                }
+                db.save(to: self.storeURL)
             }
     }
 
@@ -517,12 +549,8 @@ final class FilmRollStore: ObservableObject {
 
     /// Force a save immediately (e.g. on app background).
     func saveNow() {
-        do {
-            try database.save(to: storeURL)
-        } catch {
-            // Ignore or log
+        database.save(to: storeURL)
         }
-    }
 }
 
 // MARK: - Shared "Load Roll into Camera" backend logic
