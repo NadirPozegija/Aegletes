@@ -1,5 +1,5 @@
 //
-// FilmRollsFilterViews.swift
+// FilterViewsSelectBar.swift
 // Aegletes
 //
 // Segment selector + filtered list wrapper for FilmRolls.

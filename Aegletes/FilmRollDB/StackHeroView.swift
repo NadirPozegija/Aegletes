@@ -1,5 +1,5 @@
 //
-// FilmStackHeroView.swift
+// StackHeroView.swift
 // Aegletes
 //
 // ZStack-based "stacked cards" hero row for multi-roll stacks
