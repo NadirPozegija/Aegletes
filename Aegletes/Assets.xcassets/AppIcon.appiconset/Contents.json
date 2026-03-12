@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "aegletes_option6.png",
+      "filename" : "aegletes_option4.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -13,7 +13,7 @@
           "value" : "dark"
         }
       ],
-      "filename" : "aegletes_option6 1.png",
+      "filename" : "aegletes_option4 1.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -25,7 +25,7 @@
           "value" : "tinted"
         }
       ],
-      "filename" : "aegletes_option6 2.png",
+      "filename" : "aegletes_option4 2.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"

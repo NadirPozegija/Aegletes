@@ -20,7 +20,7 @@ struct LoadRollStatusView: View {
 
     var body: some View {
         Form {
-            Section(header: Text("Camera")) {
+            Section(header: Text("Camera").font(.title)) {
                 if cameraNames.isEmpty {
                     Text("No cameras available. Add one in Manage Cameras.")
                         .foregroundColor(.secondary)
@@ -33,10 +33,10 @@ struct LoadRollStatusView: View {
                 }
             }
 
-            Section(header: Text("Effective ISO")) {
-                Picker("Effective ISO", selection: $selectedISO) {
+            Section(header: Text("Effective ISO").font(.title)) {
+                Picker("What are you shooting at?", selection: $selectedISO) {
                     ForEach(FilmRollDatabase.effectiveISOOptions, id: \.self) { iso in
-                        Text("EI \(Int(iso))").tag(iso)
+                        Text("ISO \(Int(iso))").tag(iso)
                     }
                 }
             }

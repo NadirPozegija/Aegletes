@@ -30,12 +30,12 @@ struct FilmRollDetailView: View {
     var body: some View {
         Form {
             if !liveRoll.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Section(header: Text("Notes")) {
-                    Text(liveRoll.notes)
+                Section(header: Text("Notes").font(.title)) {
+                    Text(liveRoll.notes).font(.headline)
                 }
             }
 
-            Section(header: Text("Film")) {
+            Section(header: Text("Film").font(.title)) {
                 Text("Manufacturer: \(liveRoll.manufacturer)").bold()
                 Text("Stock: \(liveRoll.stock)").bold()
                 Text("Type: \(liveRoll.filmType.rawValue)").bold()
@@ -44,11 +44,11 @@ struct FilmRollDetailView: View {
                 Text("Effective ISO: \(Int(liveRoll.effectiveISO))").bold()
             }
 
-            Section(header: Text("Camera")) {
+            Section(header: Text("Camera").font(.title)) {
                 Text(liveRoll.camera)
             }
 
-            Section(header: Text("Status")) {
+            Section(header: Text("Status").font(.title)) {
                 Text(liveRoll.status.rawValue).bold()
                 if let loaded = liveRoll.dateLoaded {
                     Text("Loaded: \(loaded.formatted(date: .abbreviated, time: .shortened))")

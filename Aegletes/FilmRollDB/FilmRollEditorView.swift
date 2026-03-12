@@ -21,7 +21,7 @@ struct FilmRollEditorView: View {
 
     var body: some View {
         Form {
-            Section(header: Text("Film")) {
+            Section(header: Text("Film").font(.title)) {
                 TextField("Notes", text: $notes, axis: .vertical)
 
                 Picker("Manufacturer", selection: $manufacturer) {

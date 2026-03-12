@@ -108,4 +108,36 @@ extension FilmRollStore {
         roll.updateStatus(to: .loaded, at: date)
         database.updateRoll(roll)
     }
+    //  Update the stack count of the Stack. Will need to add an error or warning if the user tries to remove more rolls than possible
+    func setStackCount(for identity: FilmIdentity, to targetCount: Int) {
+        let allRollsForIdentity = rolls.filter { $0.filmIdentity == identity }
+        let currentCount = allRollsForIdentity.count
+        let target = max(1, targetCount)
+
+        if target > currentCount {
+            let extra = target - currentCount
+            let template = allRollsForIdentity.first!
+            for _ in 0..<extra {
+                let newRoll = FilmRoll(
+                    notes: template.notes,
+                    manufacturer: template.manufacturer,
+                    stock: template.stock,
+                    filmType: template.filmType,
+                    format: template.format,
+                    boxISO: template.boxISO,
+                    effectiveISO: template.effectiveISO,
+                    camera: "No camera",
+                    status: .inStorage
+                )
+                addRoll(newRoll)
+            }
+        } else if target < currentCount {
+            let needed = currentCount - target
+            let candidates = allRollsForIdentity.filter { $0.status == .inStorage }
+            let toRemove = Array(candidates.prefix(needed))
+            for r in toRemove {
+                removeRoll(r)
+            }
+        }
+    }
 }

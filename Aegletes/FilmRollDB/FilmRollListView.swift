@@ -35,7 +35,28 @@ struct FilmStackListView: View {
     // Secondary confirmation for deletion of a Roll Entry
     @State private var pendingDeletionRolls: [FilmRoll] = []
     @State private var showingDeleteConfirmation = false
+    
+    // For the ability to change roll count with a swipe action on the Parent HeroView card
+    @State private var showingStackSizeSheet = false
+    @State private var stackBeingResized: FilmIdentity?
+    @State private var newStackSizeText: String = ""
 
+    // Helper function to facilitate the swipe action on the Parent HeroView card to change roll count
+    private func applyStackSizeChange() {
+        guard let identity = stackBeingResized,
+              let target = Int(newStackSizeText)
+        else {
+            showingStackSizeSheet = false
+            stackBeingResized = nil
+            return
+        }
+
+        filmStore.setStackCount(for: identity, to: target)
+
+        showingStackSizeSheet = false
+        stackBeingResized = nil
+    }
+    
     var body: some View {
         List {
             let stacks = buildStacks(from: rolls)
@@ -69,8 +90,19 @@ struct FilmStackListView: View {
                                 showingDeleteConfirmation = true
                                 FilmDBHaptics.light()
                             } label: {
-                                Image(systemName: "trash")
+                                SwipeActionLabel(systemName: "trash", title: "Delete")
                             }
+                            
+                            // Adjust stack size (only on hero row)
+                            Button {
+                                stackBeingResized = stack.identity
+                                newStackSizeText = String(stack.rolls.count)
+                                showingStackSizeSheet = true
+                                FilmDBHaptics.light()
+                            } label: {
+                                Image(systemName: "plusminus.circle")
+                            }
+                            .tint(.brown)
                         }
 
                         // Expanded entries, sequentially named, each with its own swipe actions
@@ -100,14 +132,16 @@ struct FilmStackListView: View {
                                         showingDeleteConfirmation = true
                                         FilmDBHaptics.light()
                                     } label: {
-                                        Image(systemName: "trash")
+                                        SwipeActionLabel(systemName: "trash", title: "Delete")
                                     }
                                     // Advance status for this specific roll
                                     Button {
                                         FilmDBHaptics.medium()
                                         advanceStatus(for: roll)
                                     } label: {
-                                        Image(systemName: roll.status.actionSymbolName)
+                                        SwipeActionLabel(
+                                            systemName: roll.status.actionSymbolName, title: roll.status.actionTitle
+                                        )
                                     }
                                     .tint(roll.status.actionTintColor)
                                 }
@@ -134,14 +168,16 @@ struct FilmStackListView: View {
                                 showingDeleteConfirmation = true
                                 FilmDBHaptics.light()
                             } label: {
-                                Image(systemName: "trash")
+                                SwipeActionLabel(systemName: "trash", title: "Delete")
                             }
                             // Advance status for this roll
                             Button {
                                 FilmDBHaptics.medium()
                                 advanceStatus(for: roll)
                             } label: {
-                                Image(systemName: roll.status.actionSymbolName)
+                                SwipeActionLabel(
+                                    systemName: roll.status.actionSymbolName, title: roll.status.actionTitle
+                                )
                             }
                             .tint(roll.status.actionTintColor)
                         }
@@ -210,6 +246,39 @@ struct FilmStackListView: View {
                      : "Are you sure you want to delete this roll of \n\(label)?")
             } else {
                 Text("Are you sure you want to delete this roll?")
+            }
+        }
+        .sheet(isPresented: $showingStackSizeSheet) {
+            NavigationStack {
+                VStack {
+                    Form {
+                        Section(
+                            header: Text("Update the number of rolls this stack has:")
+                        ) {
+                            TextField("Number of rolls",
+                                      text: $newStackSizeText)
+                                .keyboardType(.numberPad)
+                        }
+                    }
+
+                    HStack {
+                        Button("Cancel") {
+                            showingStackSizeSheet = false
+                            stackBeingResized = nil
+                        }
+                        .foregroundStyle(.red)
+
+                        Spacer()
+
+                        Button("Save") {
+                            applyStackSizeChange()
+                        }
+                        .disabled(Int(newStackSizeText) == nil)
+                    }
+                    .padding()
+                }
+                .navigationTitle("Stack Size")
+                .navigationBarTitleDisplayMode(.inline)
             }
         }
     }
@@ -305,5 +374,18 @@ extension FilmStackListView {
             camera: selectedCameraForLoad,
             effectiveISO: selectedEffectiveISOForLoad
         )
+    }
+}
+
+struct SwipeActionLabel: View {
+    let systemName: String
+    let title: String
+    
+    var body: some View {
+        VStack(spacing: 2) {
+            Image(systemName: systemName)
+            Text(title)
+                .font(.caption2)
+        }
     }
 }
