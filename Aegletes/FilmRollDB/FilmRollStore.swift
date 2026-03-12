@@ -141,3 +141,18 @@ extension FilmRollStore {
         }
     }
 }
+
+extension FilmRollStore {
+    /// Returns another roll that is currently loaded in the given camera,
+    /// excluding the roll with the specified id. Returns nil if no conflict.
+    func loadedRoll(in camera: String, excluding rollID: UUID) -> FilmRoll? {
+        let trimmed = camera.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        return rolls.first(where: {
+            $0.id != rollID &&
+            $0.status == .loaded &&
+            $0.camera.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed
+        })
+    }
+}

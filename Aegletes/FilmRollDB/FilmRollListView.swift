@@ -42,6 +42,11 @@ struct FilmStackListView: View {
     @State private var showingStackSizeSheet = false
     @State private var stackBeingResized: FilmIdentity?
     @State private var newStackSizeText: String = ""
+    
+    // For checking if the camera is already in use and warning the user if yes
+    @State private var showingCameraConflictAlert = false
+    @State private var conflictExistingRoll: FilmRoll?
+    @State private var conflictTargetRoll: FilmRoll?
 
     // Helper function to facilitate the swipe action on the Parent HeroView card to change roll count
     private func applyStackSizeChange() {
@@ -62,7 +67,7 @@ struct FilmStackListView: View {
     var body: some View {
         List {
             let stacks = buildStacks(from: rolls)
-
+            
             if stacks.isEmpty {
                 Text("No rolls yet.\nUse Add Roll(s) to create your first entry.")
                     .foregroundStyle(.secondary)
@@ -107,7 +112,7 @@ struct FilmStackListView: View {
                             }
                             .tint(.brown)
                         }
-
+                        
                         // Expanded entries, sequentially named, each with its own swipe actions
                         if expandedStackIDs.contains(stack.identity) {
                             ForEach(Array(stack.rolls.enumerated()), id: \.element.id) { index, roll in
@@ -121,7 +126,7 @@ struct FilmStackListView: View {
                                 //have the sub rows inherit the color of the top card of the stack for clarity
                                 .listRowBackground(
                                     colorScheme == .light ?
-                                        Color.LightThemeStackColor : Color.DarkThemeStackColor
+                                    Color.LightThemeStackColor : Color.DarkThemeStackColor
                                 )
                                 .simultaneousGesture(
                                     TapGesture().onEnded {
@@ -222,9 +227,38 @@ struct FilmStackListView: View {
         } message: {
             Text(statusAlertMessage())
         }
+        // Camera conflict alert
+        .alert("Camera Already In Use",
+               isPresented: $showingCameraConflictAlert) {
+            Button("Cancel", role: .cancel) {
+                conflictExistingRoll = nil
+                conflictTargetRoll = nil
+            }
+            Button("Continue") {
+                if let target = conflictTargetRoll {
+                    filmStore.loadRoll(
+                        id: target.id,
+                        camera: selectedCameraForLoad,
+                        effectiveISO: selectedEffectiveISOForLoad
+                    )
+                }
+                conflictExistingRoll = nil
+                conflictTargetRoll = nil
+            }
+        } message: {
+            if let conflict = conflictExistingRoll {
+                Text("""
+                        The camera "\(conflict.camera)" already has a loaded roll:
+                        \(conflict.manufacturer) \(conflict.stock)
+                        Do you want to load a new roll into this camera anyway?
+                        """)
+            } else {
+                Text("The selected camera already has a loaded roll. Load another roll anyway?")
+            }
+        }
         .alert(
             pendingDeletionRolls.count > 1 ?
-                "Delete Stack?" : "Delete Roll?",
+            "Delete Stack?" : "Delete Roll?",
             isPresented: $showingDeleteConfirmation
         ) {
             Button("Cancel", role: .cancel) {
@@ -260,19 +294,19 @@ struct FilmStackListView: View {
                         ) {
                             TextField("Number of rolls",
                                       text: $newStackSizeText)
-                                .keyboardType(.numberPad)
+                            .keyboardType(.numberPad)
                         }
                     }
-
+                    
                     HStack {
                         Button("Cancel") {
                             showingStackSizeSheet = false
                             stackBeingResized = nil
                         }
                         .foregroundStyle(.red)
-
+                        
                         Spacer()
-
+                        
                         Button("Save") {
                             applyStackSizeChange()
                         }
@@ -370,13 +404,24 @@ extension FilmStackListView {
         }
     }
 
-    func applyLoadStatus(for roll: FilmRoll) {
-        // Delegate to shared backend logic in FilmRollStore
-        filmStore.loadRoll(
-            id: roll.id,
-            camera: selectedCameraForLoad,
-            effectiveISO: selectedEffectiveISOForLoad
-        )
+    private func applyLoadStatus(for roll: FilmRoll) {
+        let trimmedCamera = selectedCameraForLoad
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Check if this camera already has a loaded roll
+        if let conflict = filmStore.loadedRoll(in: trimmedCamera, excluding: roll.id) {
+            // Prepare conflict alert
+            conflictExistingRoll = conflict
+            conflictTargetRoll = roll
+            showingCameraConflictAlert = true
+        } else {
+            // No conflict: proceed normally
+            filmStore.loadRoll(
+                id: roll.id,
+                camera: trimmedCamera,
+                effectiveISO: selectedEffectiveISOForLoad
+            )
+        }
     }
 }
 

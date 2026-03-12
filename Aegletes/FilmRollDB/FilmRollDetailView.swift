@@ -21,6 +21,10 @@ struct FilmRollDetailView: View {
     @State private var selectedCameraForLoad: String = ""
     @State private var selectedEffectiveISOForLoad: Double =
         FilmRollDatabase.effectiveISOOptions.first ?? 100
+    
+    // check for camera conflicts in detail view as well
+    @State private var showingCameraConflictAlert = false
+    @State private var conflictExistingRoll: FilmRoll?
 
     /// Always use the latest copy of this roll from the store (so dates/status stay in sync).
     private var liveRoll: FilmRoll {
@@ -76,7 +80,7 @@ struct FilmRollDetailView: View {
                     }
                     .padding(.vertical, 8)
                     .background(liveRoll.status.actionTintColor)
-                    .foregroundColor(.white)
+                    .foregroundStyle(liveRoll.status.actionTintColor == .yellow ? .black : .white)
                     .cornerRadius(20)
                 }
                 .buttonStyle(.plain)
@@ -110,14 +114,48 @@ struct FilmRollDetailView: View {
                     selectedISO: $selectedEffectiveISOForLoad
                 ) { confirmed in
                     if confirmed {
-                        filmStore.loadRoll(
-                            id: liveRoll.id,
-                            camera: selectedCameraForLoad,
-                            effectiveISO: selectedEffectiveISOForLoad
-                        )
+                        let trimmedCamera = selectedCameraForLoad
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                        if let conflict = filmStore.loadedRoll(in: trimmedCamera, excluding: liveRoll.id) {
+                            conflictExistingRoll = conflict
+                            showingCameraConflictAlert = true
+                        } else {
+                            filmStore.loadRoll(
+                                id: liveRoll.id,
+                                camera: trimmedCamera,
+                                effectiveISO: selectedEffectiveISOForLoad
+                            )
+                        }
                     }
                     showingLoadSheet = false
                 }
+            }
+        }
+        
+        // Warn the user the camera is already in use and ask for Confirmation to continue
+        .alert("Camera Already In Use",
+               isPresented: $showingCameraConflictAlert) {
+            Button("Cancel", role: .cancel) {
+                conflictExistingRoll = nil
+            }
+            Button("Continue") {
+                filmStore.loadRoll(
+                    id: liveRoll.id,
+                    camera: selectedCameraForLoad,
+                    effectiveISO: selectedEffectiveISOForLoad
+                )
+                conflictExistingRoll = nil
+            }
+        } message: {
+            if let conflict = conflictExistingRoll {
+                Text("""
+                The camera "\(conflict.camera)" already has a loaded roll:
+                \(conflict.manufacturer) \(conflict.stock)
+                Do you want to load a new roll into this camera anyway?
+                """)
+            } else {
+                Text("The selected camera already has a loaded roll. Load another roll anyway?")
             }
         }
         // Confirmation alert for non-loaded status changes
