@@ -18,6 +18,8 @@ struct FilmStackListView: View {
 
     /// Rolls to display (already filtered/sorted by the caller).
     let rolls: [FilmRoll]
+    /// Whether to show the stack status summary line under the hero.
+    let showStatusSummary: Bool    // NEW
 
     // UI state
     @State private var expandedStackIDs: Set<FilmIdentity> = []
@@ -71,7 +73,8 @@ struct FilmStackListView: View {
                         FilmStackHeroView(
                             identity: stack.identity,
                             rolls: stack.rolls,
-                            isExpanded: expandedStackIDs.contains(stack.identity)
+                            isExpanded: expandedStackIDs.contains(stack.identity),
+                            showStatusSummary: showStatusSummary
                         )
                         .contentShape(Rectangle())
                         .onTapGesture {

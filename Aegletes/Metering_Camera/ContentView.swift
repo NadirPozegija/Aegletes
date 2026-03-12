@@ -19,10 +19,10 @@ struct ContentView: View {
     @State private var baseZoom: CGFloat = 1.0
     @GestureState private var pinchScale: CGFloat = 1.0
     @State private var showHistogram = false
-
+    
     /// Callback to switch to Film DB screen (set by RootView).
     var onShowFilmDB: (() -> Void)? = nil
-
+    
     var body: some View {
         ZStack {
             // CI-based preview in the back
@@ -54,7 +54,7 @@ struct ContentView: View {
                 )
                 .ignoresSafeArea()
                 .zIndex(0)
-
+            
             // UI overlays
             VStack {
                 // Top row: EV badge centered, Low Light warning directly under it, folder icon on right
@@ -65,10 +65,11 @@ struct ContentView: View {
                         VStack(spacing: 4) {
                             EVBadge(evDelta: vm.evDeltaValue,
                                     isHistogramActive: showHistogram)
-                                .onTapGesture {
-                                    showHistogram.toggle()
-                                }
-
+                            .onTapGesture {
+                                showHistogram.toggle()
+                                Haptics.histogramToggled()
+                            }
+                            
                             if vm.lowLightWarning {
                                 Text("Warning: Low Light!")
                                     .font(.system(size: 11, weight: .semibold))
@@ -85,7 +86,7 @@ struct ContentView: View {
                         }
                         Spacer()
                     }
-
+                    
                     // Right-aligned folder icon (Film DB)
                     HStack {
                         Spacer()
@@ -106,9 +107,9 @@ struct ContentView: View {
                     }
                 }
                 .padding(.top, 8)
-
+                
                 Spacer()
-
+                
                 // Histogram sitting directly above the bottom panel
                 if showHistogram {
                     LuminanceHistogramView(
@@ -119,7 +120,7 @@ struct ContentView: View {
                     .padding(.horizontal, 12)
                     .transition(.opacity)
                 }
-
+                
                 // Bottom controls
                 VStack {
                     // Wheels row with fixed height (panel stays static)
@@ -128,20 +129,20 @@ struct ContentView: View {
                         let baseWheelHeight: CGFloat = 150
                         let lockTrade: CGFloat = 15
                         let wheelHeight = !vm.manualMode
-                            ? (baseWheelHeight - lockTrade)   // shrink up a bit for locks
-                            : (baseWheelHeight + lockTrade)   // expand down into lock space
-
+                        ? (baseWheelHeight - lockTrade)   // shrink up a bit for locks
+                        : (baseWheelHeight + lockTrade)   // expand down into lock space
+                        
                         VStack(spacing: 6) {
                             Text("ISO")
                                 .foregroundStyle(.white.opacity(0.8))
                                 .font(.system(size: 16, weight: .semibold, design: .serif))
-
+                            
                             ZStack {
                                 Picker("", selection: $vm.exposure.isoIndex) {
                                     ForEach(isoValues.indices, id: \.self) { idx in
                                         let value = isoValues[idx]
                                         let label = String(Int(value))
-
+                                        
                                         Text(label)
                                             .fontWeight(isStandardISO(value) ? .bold : .regular)
                                             .foregroundStyle(
@@ -155,13 +156,13 @@ struct ContentView: View {
                                 .labelsHidden()
                                 .pickerStyle(.wheel)
                                 .frame(width: 90, height: wheelHeight)
-
+                                
                                 // Center outline band (no fill)
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(Color.white.opacity(0.25), lineWidth: 1)
                                     .frame(height: 32)
                             }
-
+                            
                             // Lock icon button (Light Meter mode only)
                             if !vm.manualMode {
                                 Button(action: {
@@ -170,13 +171,13 @@ struct ContentView: View {
                                 }) {
                                     Image(systemName: vm.locks.iso ?
                                           "lock.fill" : "lock.open")
-                                        .font(.caption2.weight(.semibold))
-                                        .foregroundStyle(.white)
-                                        .padding(6)
-                                        .background(
-                                            Circle().fill(vm.locks.iso ?
-                                                          Color.red : Color.gray)
-                                        )
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(6)
+                                    .background(
+                                        Circle().fill(vm.locks.iso ?
+                                                      Color.red : Color.gray)
+                                    )
                                 }
                             }
                         }
@@ -188,7 +189,7 @@ struct ContentView: View {
                                 vm.updateForNewSceneEV()
                             }
                         }
-
+                        
                         // Aperture picker
                         paramPicker(
                             title: "f/stop",
@@ -205,7 +206,7 @@ struct ContentView: View {
                                 vm.updateForNewSceneEV()
                             }
                         }
-
+                        
                         // Shutter picker
                         paramPicker(
                             title: "s",
@@ -230,7 +231,7 @@ struct ContentView: View {
                         }
                     }
                     .frame(height: 190)  // fixed row height; wheels adjust within this
-
+                    
                     // Exposure mode selector: Light Meter vs Manual
                     HStack {
                         Spacer()
@@ -242,7 +243,7 @@ struct ContentView: View {
                                 )
                             )
                             .frame(maxWidth: 260)
-
+                            
                             Text("Exposure Mode")
                                 .foregroundStyle(.white)
                                 .font(.caption)
@@ -261,23 +262,23 @@ struct ContentView: View {
             }
             .padding(.bottom, 0)
             .zIndex(1)
-
+            
             // Camera permission overlay
             if vm.cameraAuthState == .denied || vm.cameraAuthState == .restricted {
                 Color.black.opacity(0.7)
                     .ignoresSafeArea()
-
+                
                 VStack(spacing: 12) {
                     Text("Camera Access Needed")
                         .font(.headline)
                         .foregroundStyle(.white)
-
+                    
                     Text("Grant camera permission in Settings to use the light meter.")
                         .font(.subheadline)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.white.opacity(0.8))
                         .padding(.horizontal, 24)
-
+                    
                     Button {
                         if let url = URL(string: UIApplication.openSettingsURLString) {
                             UIApplication.shared.open(url)
@@ -294,20 +295,20 @@ struct ContentView: View {
                     }
                 }
             }
-
+            
             // Camera runtime error / interruption overlay (only when authorized)
             if vm.cameraAuthState == .authorized &&
-               (vm.camera.sessionInterrupted || vm.camera.sessionErrorMessage != nil) {
-
+                (vm.camera.sessionInterrupted || vm.camera.sessionErrorMessage != nil) {
+                
                 Color.black.opacity(0.55)
                     .ignoresSafeArea()
-
+                
                 VStack(spacing: 10) {
                     if vm.camera.sessionInterrupted {
                         Text("Camera Temporarily Unavailable")
                             .font(.headline)
                             .foregroundStyle(.primary)
-
+                        
                         Text("Another app is using the camera or the system has paused capture.")
                             .font(.subheadline)
                             .multilineTextAlignment(.center)
@@ -317,14 +318,14 @@ struct ContentView: View {
                         Text("Camera Error")
                             .font(.headline)
                             .foregroundStyle(.primary)
-
+                        
                         Text(message)
                             .font(.subheadline)
                             .multilineTextAlignment(.center)
                             .foregroundStyle(.primary.opacity(0.8))
                             .padding(.horizontal, 24)
                     }
-
+                    
                     Button {
                         vm.camera.sessionErrorMessage = nil
                         vm.camera.sessionInterrupted = false
@@ -345,7 +346,7 @@ struct ContentView: View {
             }
         }
     }
-
+    
     // MARK: - Generic parameter picker (aperture & shutter)
     private func paramPicker(title: String,
                              values: [String],
@@ -357,15 +358,15 @@ struct ContentView: View {
         let baseWheelHeight: CGFloat = 150
         let lockTrade: CGFloat = 15
         let wheelHeight = showLock
-            ? (baseWheelHeight - lockTrade)   // shrink up a bit for locks
-            : (baseWheelHeight + lockTrade)   // expand down into lock space
-
+        ? (baseWheelHeight - lockTrade)   // shrink up a bit for locks
+        : (baseWheelHeight + lockTrade)   // expand down into lock space
+        
         return VStack(spacing: 6) {
             // Title: fixed position, 16pt, semibold, serif
             Text(title)
                 .foregroundStyle(.white.opacity(0.8))
                 .font(.system(size: 16, weight: .semibold, design: .serif))
-
+            
             // Wheel picker with center outline only (no filled highlight)
             ZStack {
                 Picker("", selection: selection) {
@@ -378,13 +379,13 @@ struct ContentView: View {
                 .labelsHidden()
                 .pickerStyle(.wheel)
                 .frame(width: 90, height: wheelHeight)
-
+                
                 // Center outline band (no fill)
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(Color.white.opacity(0.25), lineWidth: 1)
                     .frame(height: 32)
             }
-
+            
             // Lock icon button (Light Meter mode only)
             if showLock {
                 Button(action: {
@@ -393,24 +394,24 @@ struct ContentView: View {
                 }) {
                     Image(systemName: locked ?
                           "lock.fill" : "lock.open")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(6)
-                        .background(
-                            Circle().fill(locked ?
-                                          Color.red : Color.gray)
-                        )
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(6)
+                    .background(
+                        Circle().fill(locked ?
+                                      Color.red : Color.gray)
+                    )
                 }
             }
         }
         .padding(.horizontal, 4)
     }
-
+    
     // MARK: - EV Badge
     private struct EVBadge: View {
         let evDelta: Double
         let isHistogramActive: Bool
-
+        
         var body: some View {
             let text = String(format: "EV Δ = %+0.1f", evDelta)
             Text(text)
@@ -434,11 +435,11 @@ struct ContentView: View {
                 .foregroundStyle(.white)
         }
     }
-
+    
     // MARK: - Mode Selector (custom tinted segments)
     private struct ModeSelector: View {
         @Binding var isManual: Bool
-
+        
         var body: some View {
             HStack(spacing: 0) {
                 // Light Meter segment
@@ -460,7 +461,7 @@ struct ContentView: View {
                         )
                 }
                 .buttonStyle(.plain)
-
+                
                 // Manual segment
                 Button {
                     if !isManual {
@@ -488,16 +489,21 @@ struct ContentView: View {
             )
         }
     }
-
+    
     // MARK: - Haptics
     private enum Haptics {
         static func modeChanged() {
             let generator = UIImpactFeedbackGenerator(style: .medium)
             generator.impactOccurred()
         }
-
+        
         static func lockToggled() {
             let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.impactOccurred()
+        }
+        
+        static func histogramToggled() {
+            let generator = UIImpactFeedbackGenerator(style: .soft)
             generator.impactOccurred()
         }
     }

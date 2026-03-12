@@ -73,7 +73,7 @@ struct FilmRollsSegmentSelector: View {
             let screen = scene.screen as UIScreen?
         else { return }
 
-        let h = screen.bounds.height / 12.0
+        let h = screen.bounds.height / 14.0
         // Clamp to something sensible so it doesn't get extreme on unusual screens
         barHeight = max(28, min(h, 60))
     }
@@ -87,7 +87,7 @@ struct FilteredFilmRollsListView: View {
 
     var body: some View {
         let filtered = filteredRolls(for: selectedSegment, from: filmStore.rolls)
-        FilmStackListView(rolls: filtered)
+        FilmStackListView(rolls: filtered, showStatusSummary: (selectedSegment == 1)) // Show the summary on "All"
     }
 
     // MARK: - Filtering & sorting logic
