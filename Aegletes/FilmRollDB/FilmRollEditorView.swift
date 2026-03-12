@@ -27,21 +27,21 @@ struct FilmRollEditorView: View {
                 Picker("Manufacturer", selection: $manufacturer) {
                     Text("Select a Manufacturer").tag("")
                         ForEach(FilmRollDatabase.manufacturerOptions, id: \.self) { m in
-                            Text(m).tag(m).bold().italic()
+                            Text(m).tag(m)
                     }
                 }
 
-                TextField("Or, enter custom manufacturer", text: $manufacturer)
+                TextField("Or enter custom manufacturer", text: $manufacturer).bold().italic()
 
                 if let stocks = FilmRollDatabase.stockCatalog[manufacturer], !stocks.isEmpty {
                     Picker("Stock", selection: $stock) {
                         ForEach(stocks, id: \.self) { s in
-                            Text(s).tag(s).bold().italic()
+                            Text(s).tag(s)
                         }
                     }
                 }
 
-                TextField("Or, enter custom stock", text: $stock)
+                TextField("Or enter custom stock", text: $stock).bold().italic()
 
                 Picker("Film Type", selection: $filmType) {
                     Text("Color/B&W/Slide").tag(FilmType?.none)

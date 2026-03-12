@@ -19,8 +19,7 @@ struct FilmRollDetailView: View {
 
     @State private var showingLoadSheet = false
     @State private var selectedCameraForLoad: String = ""
-    @State private var selectedEffectiveISOForLoad: Double =
-        FilmRollDatabase.effectiveISOOptions.first ?? 100
+    @State private var selectedEffectiveISOForLoad: Double = FilmRollDatabase.effectiveISOOptions.first ?? 100
     
     // check for camera conflicts in detail view as well
     @State private var showingCameraConflictAlert = false
@@ -40,16 +39,33 @@ struct FilmRollDetailView: View {
             }
 
             Section(header: Text("Film").font(.title)) {
-                Text("Manufacturer: \(liveRoll.manufacturer)").bold()
-                Text("Stock: \(liveRoll.stock)").bold()
-                Text("Type: \(liveRoll.filmType.rawValue)").bold()
-                Text("Format: \(liveRoll.format.rawValue)").bold()
-                Text("Box ISO: \(Int(liveRoll.boxISO))").bold()
-                Text("Effective ISO: \(Int(liveRoll.effectiveISO))").bold()
+                HStack{
+                    Text("Manufacturer: ").italic() ; Text("\(liveRoll.manufacturer)").bold()
+                }
+                
+                HStack{
+                    Text("Stock: ").italic() ; Text("\(liveRoll.stock)").bold()
+                }
+                
+                HStack{
+                    Text("Type: ").italic() ; Text(" \(liveRoll.filmType.rawValue)").bold()
+                }
+                HStack{
+                    Text("Format: ").italic() ; Text("\(liveRoll.format.rawValue)").bold()
+                }
+                
+                HStack{
+                    Text("Box ISO: ").italic() ; Text("\(Int(liveRoll.boxISO))").bold()
+                }
+                
+                HStack{
+                    
+                    Text("Effective ISO: ").italic() ; Text("\(Int(liveRoll.effectiveISO))").bold()
+                }
             }
 
             Section(header: Text("Camera").font(.title)) {
-                Text(liveRoll.camera)
+                Text(liveRoll.camera).bold()
             }
 
             Section(header: Text("Status").font(.title)) {
