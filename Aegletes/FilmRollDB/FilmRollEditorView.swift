@@ -81,7 +81,7 @@ struct FilmRollEditorView: View {
             }
         }
     }
-
+    
     private func saveRolls() {
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedManufacturer = manufacturer.trimmingCharacters(in: .whitespacesAndNewlines)

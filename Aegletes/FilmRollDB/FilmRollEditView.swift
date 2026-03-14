@@ -56,7 +56,7 @@ struct FilmRollEditView: View {
                     }
                 }
 
-                TextField("Or enter Custom Manufacturer", text: $manufacturer).bold().italic()
+                TextField("Or enter custom manufacturer", text: $manufacturer).bold().italic()
 
                 if let stocks = FilmRollDatabase.stockCatalog[manufacturer], !stocks.isEmpty {
                     Picker("Stock", selection: $stock) {
@@ -67,7 +67,7 @@ struct FilmRollEditView: View {
                 }
 
                 TextField("Or enter custom stock", text: $stock).bold().italic()
-
+                
                 Picker("Film Type", selection: $filmType) {
                     ForEach(FilmRollDatabase.filmTypeOptions) { t in
                         Text(t.rawValue).tag(t)

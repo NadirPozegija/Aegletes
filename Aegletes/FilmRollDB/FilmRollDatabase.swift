@@ -24,7 +24,7 @@ struct FilmRollDatabase: Codable {
     // User-entered camera names (for auto-complete / pickers)
     private var cameraNameSet: Set = ["No camera"]
 
-    // MARK: - Option Catalogs (suggestions only)
+    // MARK: - Option Catalogs
 
     /// Common manufacturers (user can still enter any custom string).
     static let manufacturerOptions: [String] = [
@@ -138,7 +138,7 @@ struct FilmRollDatabase: Codable {
         Array(cameraNameSet).sorted()
     }
 
-    /// Rebuild camera name set **without** losing existing user-entered names.
+    /// - Rebuild camera name set without losing existing user-entered names.
     /// - Ensures "No camera" is present.
     /// - Adds any camera names referenced by rolls.
     mutating func rebuildCameraNames() {

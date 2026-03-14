@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "aegletes_transparentBackground.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
