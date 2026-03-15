@@ -285,38 +285,29 @@ struct FilmStackListView: View {
                 Text("Are you sure you want to delete this roll?")
             }
         }
-        .sheet(isPresented: $showingStackSizeSheet) {
-            NavigationStack {
-                VStack {
-                    Form {
-                        Section(
-                            header: Text("Update the number of rolls this stack has:")
-                        ) {
-                            TextField("Number of rolls",
-                                      text: $newStackSizeText)
-                            .keyboardType(.numberPad)
-                        }
+        .alert("Update the number of rolls this stack has:", isPresented: $showingStackSizeSheet) {
+            TextField("New stack count", text: $newStackSizeText)
+                .keyboardType(.numberPad)
+                .onChange(of: newStackSizeText) {oldValue, newValue in
+                    // Keep only digits
+                    let digitsOnly = newValue.filter { $0.isNumber }
+                    // Limit to 3 characters
+                    let limited = String(digitsOnly.prefix(3))
+                    if limited != newValue {
+                        newStackSizeText = limited
                     }
-                    
-                    HStack {
-                        Button("Cancel") {
-                            showingStackSizeSheet = false
-                            stackBeingResized = nil
-                        }
-                        .foregroundStyle(.red)
-                        
-                        Spacer()
-                        
-                        Button("Save") {
-                            applyStackSizeChange()
-                        }
-                        .disabled(Int(newStackSizeText) == nil)
-                    }
-                    .padding()
                 }
-                .navigationTitle("Stack Size")
-                .navigationBarTitleDisplayMode(.inline)
+            Button("Cancel", role: .cancel) {
+                showingStackSizeSheet = false
+                stackBeingResized = nil
             }
+            Button("Save") {
+                applyStackSizeChange()
+            }
+            .disabled({
+                guard let value = Int(newStackSizeText) else { return true }
+                return value < 1 || value > 1024
+            }())
         }
     }
 }

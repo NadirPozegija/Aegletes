@@ -156,3 +156,23 @@ extension FilmRollStore {
         })
     }
 }
+
+// MARK: - Bulk identity update for stacks
+extension FilmRollStore {
+    /// Update the "identity" fields (manufacturer/stock/type/format/boxISO)
+    /// for all rolls that match a given FilmIdentity.
+    func updateIdentityForAllRolls(
+        in originalIdentity: FilmIdentity,
+        to newIdentity: FilmIdentity
+    ) {
+        for idx in database.rolls.indices {
+            if database.rolls[idx].filmIdentity == originalIdentity {
+                database.rolls[idx].manufacturer = newIdentity.manufacturer
+                database.rolls[idx].stock        = newIdentity.stock
+                database.rolls[idx].filmType     = newIdentity.filmType
+                database.rolls[idx].format       = newIdentity.format
+                database.rolls[idx].boxISO       = newIdentity.boxISO
+            }
+        }
+    }
+}

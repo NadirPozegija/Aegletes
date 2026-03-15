@@ -8,8 +8,8 @@
 import SwiftUI
 
 extension Color {
-    static let DarkThemeStackColor = Color(red: 0.08, green: 0.12, blue: 0.20) // Darker blue-gray
-    static let LightThemeStackColor = Color(red: 0.84, green: 0.90, blue: 0.96) //pale blue
+    static let DarkThemeStackColor = Color(red: 0.08, green: 0.12, blue: 0.20)  // Darker blue-gray
+    static let LightThemeStackColor = Color(red: 0.84, green: 0.90, blue: 0.96) // pale blue
 }
 
 struct FilmStackHeroView: View {

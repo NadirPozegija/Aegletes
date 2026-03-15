@@ -25,78 +25,15 @@ struct FilmRollDatabase: Codable {
     private var cameraNameSet: Set = ["No camera"]
 
     // MARK: - Option Catalogs
-
     /// Common manufacturers (user can still enter any custom string).
-    static let manufacturerOptions: [String] = [
-        "Kodak",
-        "Ilford",
-        "Cinestill",
-        "Fuji",
-        "Lomography",
-        "Foma",
-        "Harman"
-    ]
+    static var manufacturerOptions: [String] {
+        FilmStockCatalog.manufacturerOptions
+    }
 
     /// Common film stocks per manufacturer (user can still type any custom stock name).
-    static let stockCatalog: [String: [String]] = [
-        "Kodak": [
-            "Portra 160",
-            "Portra 400",
-            "Portra 800",
-            "Ektar 100",
-            "Gold 200",
-            "Ultramax 400",
-            "ColorPlus 200",
-            "Tri-X 400",
-            "T-Max 100",
-            "T-Max 400",
-            "Ektachrome E100"
-        ],
-        "Ilford": [
-            "HP5+ 400",
-            "FP4+ 125",
-            "Delta 100",
-            "Delta 400",
-            "Delta 3200",
-            "Pan F 50",
-            "XP2 Super 400"
-        ],
-        "Cinestill": [
-            "800T",
-            "400D",
-            "50D",
-            "BwXX"
-        ],
-        "Fuji": [
-            "Superia X-TRA 400",
-            "Superia 200",
-            "C200",
-            "Pro 400H",
-            "Velvia 50",
-            "Velvia 100",
-            "Provia 100F",
-            "Neopan Acros 100 II"
-        ],
-        "Lomography": [
-            "Color Negative 100",
-            "Color Negative 400",
-            "Color Negative 800",
-            "LomoChrome Purple",
-            "LomoChrome Metropolis",
-            "LomoChrome Turquoise"
-        ],
-        "Foma": [
-            "Fomapan 100",
-            "Fomapan 200",
-            "Fomapan 400"
-        ],
-        "Harman": [
-            "Phoenix I",
-            "Phoenix II",
-            "Red 125",
-            "Switch Azure"
-        ]
-    ]
+    static var stockCatalog: [String: [String]] {
+        FilmStockCatalog.stockCatalog
+    }
 
     /// Common formats.
     static let formatOptions: [FilmFormat] = FilmFormat.allCases
@@ -123,6 +60,14 @@ struct FilmRollDatabase: Codable {
 
     /// Status options.
     static let statusOptions: [FilmRollStatus] = FilmRollStatus.allCases
+    
+    // Helper for known stock attributes, used by editors
+    static func stockDefaults(
+        forManufacturer manufacturer: String,
+        stock: String
+    ) -> (FilmType, Double)? {
+        FilmStockCatalog.defaults(forManufacturer: manufacturer, stock: stock)
+    }
 
     // MARK: - Camera Names
 
