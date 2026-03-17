@@ -32,12 +32,16 @@ enum FilmStockCatalog {
             "Portra 400",
             "Portra 800",
             "Ektar 100",
+            "ProImage 100",
             "Gold 200",
+            "Kodacolor 100",
+            "Kodacolor 200",
             "Ultramax 400",
             "ColorPlus 200",
             "Tri-X 400",
             "T-Max 100",
             "T-Max 400",
+            "T-Max p3200",
             "Ektachrome E100"
         ],
         "Ilford": [
@@ -116,11 +120,15 @@ enum FilmStockCatalog {
         "Kodak|Gold 200":        (.color, 200),
         "Kodak|Ultramax 400":    (.color, 400),
         "Kodak|ColorPlus 200":   (.color, 200),
+        "ProImage|100":          (.color, 100),
+        "Kodacolor|100":         (.color, 100),
+        "Kodacolor|200":         (.color, 200),
 
         // Kodak B&W
         "Kodak|Tri-X 400":       (.bw,    400),
         "Kodak|T-Max 100":       (.bw,    100),
         "Kodak|T-Max 400":       (.bw,    400),
+        "Kodak|T-Max p3200":     (.bw,    3200),
 
         // Kodak slide
         "Kodak|Ektachrome E100": (.slide, 100),
