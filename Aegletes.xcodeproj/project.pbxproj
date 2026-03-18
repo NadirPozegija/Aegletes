@@ -6,11 +6,27 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		21B3004A2F6A2400008808B6 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 21D690042F57CF3100F63120 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 21D6900B2F57CF3100F63120;
+			remoteInfo = Aegletes;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		21B300462F6A2400008808B6 /* AegletesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AegletesTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		21D6900C2F57CF3100F63120 /* Aegletes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Aegletes.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		21B300472F6A2400008808B6 /* AegletesTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = AegletesTests;
+			sourceTree = "<group>";
+		};
 		21D6900E2F57CF3100F63120 /* Aegletes */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Aegletes;
@@ -19,6 +35,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		21B300432F6A2400008808B6 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		21D690092F57CF3100F63120 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -33,6 +56,7 @@
 			isa = PBXGroup;
 			children = (
 				21D6900E2F57CF3100F63120 /* Aegletes */,
+				21B300472F6A2400008808B6 /* AegletesTests */,
 				21D6900D2F57CF3100F63120 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +65,7 @@
 			isa = PBXGroup;
 			children = (
 				21D6900C2F57CF3100F63120 /* Aegletes.app */,
+				21B300462F6A2400008808B6 /* AegletesTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,6 +73,29 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		21B300452F6A2400008808B6 /* AegletesTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 21B3004C2F6A2400008808B6 /* Build configuration list for PBXNativeTarget "AegletesTests" */;
+			buildPhases = (
+				21B300422F6A2400008808B6 /* Sources */,
+				21B300432F6A2400008808B6 /* Frameworks */,
+				21B300442F6A2400008808B6 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				21B3004B2F6A2400008808B6 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				21B300472F6A2400008808B6 /* AegletesTests */,
+			);
+			name = AegletesTests;
+			packageProductDependencies = (
+			);
+			productName = AegletesTests;
+			productReference = 21B300462F6A2400008808B6 /* AegletesTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		21D6900B2F57CF3100F63120 /* Aegletes */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 21D690172F57CF3200F63120 /* Build configuration list for PBXNativeTarget "Aegletes" */;
@@ -80,6 +128,10 @@
 				LastSwiftUpdateCheck = 2630;
 				LastUpgradeCheck = 2630;
 				TargetAttributes = {
+					21B300452F6A2400008808B6 = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = 21D6900B2F57CF3100F63120;
+					};
 					21D6900B2F57CF3100F63120 = {
 						CreatedOnToolsVersion = 26.3;
 					};
@@ -100,11 +152,19 @@
 			projectRoot = "";
 			targets = (
 				21D6900B2F57CF3100F63120 /* Aegletes */,
+				21B300452F6A2400008808B6 /* AegletesTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		21B300442F6A2400008808B6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		21D6900A2F57CF3100F63120 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -115,6 +175,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		21B300422F6A2400008808B6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		21D690082F57CF3100F63120 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -124,7 +191,57 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		21B3004B2F6A2400008808B6 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 21D6900B2F57CF3100F63120 /* Aegletes */;
+			targetProxy = 21B3004A2F6A2400008808B6 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		21B3004D2F6A2400008808B6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = YX8253X795;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "Nadir-Pozegija.AegletesTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Aegletes.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Aegletes";
+			};
+			name = Debug;
+		};
+		21B3004E2F6A2400008808B6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = YX8253X795;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "Nadir-Pozegija.AegletesTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Aegletes.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Aegletes";
+			};
+			name = Release;
+		};
 		21D690152F57CF3200F63120 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -325,6 +442,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		21B3004C2F6A2400008808B6 /* Build configuration list for PBXNativeTarget "AegletesTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				21B3004D2F6A2400008808B6 /* Debug */,
+				21B3004E2F6A2400008808B6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		21D690072F57CF3100F63120 /* Build configuration list for PBXProject "Aegletes" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

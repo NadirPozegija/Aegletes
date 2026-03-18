@@ -144,7 +144,7 @@ func autoAdjust(settings: inout ExposureSettings,
 
         currentEV = settingsEV100(s)
         delta = targetEV - currentEV
-    } else if delta > evDeltaTarget {
+    } else if delta >= evDeltaTarget {
         // OVEREXPOSED beyond tolerance: need to darken.
         // We want to move delta down toward evDeltaTarget (but not below).
         let extra = delta - evDeltaTarget                  // how many stops to remove
