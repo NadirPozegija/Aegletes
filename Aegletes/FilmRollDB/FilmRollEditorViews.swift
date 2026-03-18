@@ -224,6 +224,16 @@ struct FilmRollEditView: View {
         _dateScanned = State(initialValue: roll.dateScanned)
         _originalIdentity = State(initialValue: roll.filmIdentity)
     }
+    
+    private func normalizeCameraIfNeeded() {
+        if filmStore.cameraNames.isEmpty == false {
+            if !filmStore.cameraNames.contains(camera) {
+                camera = filmStore.cameraNames.first ?? "No camera"
+            }
+        } else {
+            camera = "No camera"
+        }
+    }
 
     var body: some View {
         Form {
@@ -334,51 +344,32 @@ struct FilmRollEditView: View {
         }
         .onAppear {
             // Ensure camera is valid against current cameraNames
-            if filmStore.cameraNames.isEmpty == false {
-                if !filmStore.cameraNames.contains(camera) {
-                    camera = filmStore.cameraNames.first ?? "No camera"
-                }
-            } else {
-                camera = "No camera"
-            }
+            normalizeCameraIfNeeded()
 
-            // Compute stack size for this identity
-            let identity = FilmIdentity(
+            // 2) How many rolls shared this identity when we opened the editor?
+            let originalCount = filmStore.rolls
+                .filter { $0.filmIdentity == originalIdentity }
+                .count
+            isPartOfOriginalStack = originalCount > 1
+
+            // 3) Current identity based on the editable fields
+            let currentIdentity = FilmIdentity(
                 manufacturer: manufacturer.trimmingCharacters(in: .whitespacesAndNewlines),
                 stock: stock.trimmingCharacters(in: .whitespacesAndNewlines),
                 filmType: filmType,
                 format: format,
                 boxISO: boxISO
             )
-            let currentCount = filmStore.rolls.filter { $0.filmIdentity == identity }.count
-            rollCountText = String(max(1, currentCount))
+            let currentCount = filmStore.rolls
+                .filter { $0.filmIdentity == currentIdentity }
+                .count
+
             isPartOfStack = currentCount > 1
-        }
-        .onAppear {
-            // Ensure camera is valid against current cameraNames
-            if filmStore.cameraNames.isEmpty == false {
-                if !filmStore.cameraNames.contains(camera) {
-                    camera = filmStore.cameraNames.first ?? "No camera"
-                }
-            } else {
-                camera = "No camera"
-            }
 
-            // How many rolls shared this identity when we opened the editor?
-            let countInOriginalStack = filmStore.rolls.filter { $0.filmIdentity == originalIdentity }.count
-            isPartOfOriginalStack = countInOriginalStack > 1
-
-            if !isPartOfOriginalStack {
-                let currentIdentity = FilmIdentity(
-                    manufacturer: manufacturer.trimmingCharacters(in: .whitespacesAndNewlines),
-                    stock: stock.trimmingCharacters(in: .whitespacesAndNewlines),
-                    filmType: filmType,
-                    format: format,
-                    boxISO: boxISO
-                )
-                let currentCount = filmStore.rolls.filter { $0.filmIdentity == currentIdentity }.count
-                rollCountText = String(max(1, currentCount))
-            }
+            // 4) Initialize rollCountText from current identity
+            //    non‑stack rolls get editable count;
+            //    stacks are locked and only changed via setStackCount on save)
+            rollCountText = String(max(1, currentCount))
         }
         .navigationTitle("Edit Roll")
         .navigationBarTitleDisplayMode(.inline)

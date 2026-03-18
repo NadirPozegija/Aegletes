@@ -133,7 +133,7 @@ struct LuminanceHistogramView: View {
         // - targetOffsetEV < 0: settings brighter than scene (histogram should shift left).
         let scalePerEV: Double = 4.0  // tweak as desired
         let center = Double(bins.count - 1) / 2.0
-        let targetEVRelative = -targetOffsetEV
+        let targetEVRelative = targetOffsetEV
         var targetIndex = center + targetEVRelative * scalePerEV
         targetIndex = max(0, min(Double(bins.count - 1), targetIndex))
 
