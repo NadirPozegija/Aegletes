@@ -72,6 +72,9 @@ struct FilmRoll: Identifiable, Codable, Equatable {
     /// Records when status first becomes .archived (treated as "dateScanned" per requirements).
     var dateScanned: Date?
 
+    /// Journal: Per‑roll exposure journal entries (persisted with the roll).
+    var journal: [FilmExposureEntry]
+
     init(
         id: UUID = UUID(),
         notes: String,
@@ -86,7 +89,8 @@ struct FilmRoll: Identifiable, Codable, Equatable {
         dateCreated: Date = Date(),
         dateLoaded: Date? = nil,
         dateFinished: Date? = nil,
-        dateScanned: Date? = nil
+        dateScanned: Date? = nil,
+        journal: [FilmExposureEntry] = []
     ) {
         self.id = id
         self.notes = notes
@@ -102,6 +106,7 @@ struct FilmRoll: Identifiable, Codable, Equatable {
         self.dateLoaded = dateLoaded
         self.dateFinished = dateFinished
         self.dateScanned = dateScanned
+        self.journal = journal
     }
 
     // MARK: - Codable with backward compatibility
@@ -121,6 +126,7 @@ struct FilmRoll: Identifiable, Codable, Equatable {
         case dateLoaded
         case dateFinished
         case dateScanned
+        case journal
     }
 
     init(from decoder: Decoder) throws {
@@ -140,6 +146,7 @@ struct FilmRoll: Identifiable, Codable, Equatable {
         dateLoaded = try c.decodeIfPresent(Date.self, forKey: .dateLoaded)
         dateFinished = try c.decodeIfPresent(Date.self, forKey: .dateFinished)
         dateScanned = try c.decodeIfPresent(Date.self, forKey: .dateScanned)
+        journal = try c.decodeIfPresent([FilmExposureEntry].self, forKey: .journal) ?? []
     }
 
     func encode(to encoder: Encoder) throws {
@@ -158,6 +165,7 @@ struct FilmRoll: Identifiable, Codable, Equatable {
         try c.encodeIfPresent(dateLoaded, forKey: .dateLoaded)
         try c.encodeIfPresent(dateFinished, forKey: .dateFinished)
         try c.encodeIfPresent(dateScanned, forKey: .dateScanned)
+        try c.encode(journal, forKey: .journal)
     }
 
     /// Update status and automatically set key dates on first transition:
@@ -199,5 +207,85 @@ extension FilmRoll {
             format: format,
             boxISO: boxISO
         )
+    }
+}
+
+/// **Adding Journal Entries to the film roll**
+
+extension FilmRoll {
+    mutating func addJournalEntry(_ entry: FilmExposureEntry) {
+        journal.append(entry)
+    }
+
+    /// Entries sorted by (frameNumber, date) for UI display.
+    var sortedJournalEntries: [FilmExposureEntry] {
+        journal.sorted { a, b in
+            switch (a.frameNumber, b.frameNumber) {
+            case let (fa?, fb?):
+                if fa != fb { return fa < fb }
+                return a.dateCaptured < b.dateCaptured
+            case (nil, nil):
+                return a.dateCaptured < b.dateCaptured
+            case (nil, _?):
+                return false
+            case (_?, nil):
+                return true
+            }
+        }
+    }
+}
+
+// MARK: - Exposure Journal
+
+/// One captured exposure for a roll (typically one frame).
+struct FilmExposureEntry: Identifiable, Codable, Equatable {
+    var id: UUID
+
+    /// Optional frame number on the roll (1‑based, or nil if not specified).
+    var frameNumber: Int?
+
+    /// When this exposure was captured (meter side timestamp).
+    var dateCaptured: Date
+
+    /// Absolute exposure values at capture time.
+    var iso: Double
+    var aperture: Double
+    var shutter: Double
+
+    /// Whether this was captured in Manual mode vs Light Meter mode.
+    var manualMode: Bool
+
+    /// Scene EV100 and settings EV100 at capture time (for later analysis/UX).
+    var sceneEV100: Double
+    var settingsEV100: Double
+    var evDelta: Double
+
+    /// Optional notes (e.g. “backlit portrait”, “pushed +1 in dev”).
+    var notes: String
+
+    init(
+        id: UUID = UUID(),
+        frameNumber: Int?,
+        dateCaptured: Date = Date(),
+        iso: Double,
+        aperture: Double,
+        shutter: Double,
+        manualMode: Bool,
+        sceneEV100: Double,
+        settingsEV100: Double,
+        evDelta: Double,
+        notes: String = ""
+    ) {
+        self.id = id
+        self.frameNumber = frameNumber
+        self.dateCaptured = dateCaptured
+        self.iso = iso
+        self.aperture = aperture
+        self.shutter = shutter
+        self.manualMode = manualMode
+        self.sceneEV100 = sceneEV100
+        self.settingsEV100 = settingsEV100
+        self.evDelta = evDelta
+        self.notes = notes
     }
 }

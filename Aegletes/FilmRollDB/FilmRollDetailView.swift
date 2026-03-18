@@ -68,6 +68,14 @@ struct FilmRollDetailView: View {
                 Text(liveRoll.camera).bold()
             }
 
+            // Journal Section with deletion
+            JournalView(roll: liveRoll) { entry in
+                // Delete the journal entry from this roll and persist
+                guard var latest = filmStore.rolls.first(where: { $0.id == liveRoll.id }) else { return }
+                latest.journal.removeAll { $0.id == entry.id }
+                filmStore.updateRoll(latest)
+            }
+            
             Section(header: Text("Status").font(.title)) {
                 Text(liveRoll.status.rawValue).bold()
                 if let loaded = liveRoll.dateLoaded {

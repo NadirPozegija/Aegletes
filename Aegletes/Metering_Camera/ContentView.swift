@@ -15,10 +15,15 @@ private func isStandardISO(_ value: Double) -> Bool {
 }
 
 struct ContentView: View {
+    @EnvironmentObject var filmStore: FilmRollStore
+    
     @StateObject private var vm = AegletesViewModel()
     @State private var baseZoom: CGFloat = 1.0
     @GestureState private var pinchScale: CGFloat = 1.0
     @State private var showHistogram = false
+    
+    // Controls the "capture exposure" flow
+    @State private var showingCaptureSheet = false
     
     /// Callback to switch to Film DB screen (set by RootView).
     var onShowFilmDB: (() -> Void)? = nil
@@ -232,9 +237,10 @@ struct ContentView: View {
                     }
                     .frame(height: 190)  // fixed row height; wheels adjust within this
                     
-                    // Exposure mode selector: Light Meter vs Manual
-                    HStack {
+                    // Exposure mode selector: Light Meter vs Manual + Capture button
+                    HStack(alignment: .top, spacing: 12) {
                         Spacer()
+
                         VStack(spacing: 6) {
                             ModeSelector(
                                 isManual: Binding(
@@ -243,14 +249,29 @@ struct ContentView: View {
                                 )
                             )
                             .frame(maxWidth: 260)
-                            
+
                             Text("Exposure Mode")
                                 .foregroundStyle(.white)
                                 .font(.caption)
                         }
+
+                        // Capture exposure button
+                        Button {
+                            Haptics.capture()
+                            showingCaptureSheet = true
+                        } label: {
+                            Image(systemName: "camera.metering.spot") // or another symbol you like
+                                .font(.system(size: 18, weight: .semibold))
+                                .padding(8)
+                                .background(
+                                    Circle().fill(Color.white.opacity(0.9))
+                                )
+                                .foregroundStyle(.black)
+                        }
+
                         Spacer()
                     }
-                    .padding(.top, 4)
+                    .padding(.top, 8)
                     .padding(.horizontal)
                     .padding(.bottom, 8)
                 }
@@ -343,6 +364,13 @@ struct ContentView: View {
                             .foregroundStyle(.black)
                     }
                 }
+            }
+        }
+        //The sheet to show the scene notes that saves to the journal
+        .sheet(isPresented: $showingCaptureSheet) {
+            CaptureExposureSheet( loadedRolls: loadedRolls, isPresented: $showingCaptureSheet)
+            { roll, frame, notes in
+                captureExposure(to: roll, frame: frame, notes: notes)
             }
         }
     }
@@ -506,5 +534,53 @@ struct ContentView: View {
             let generator = UIImpactFeedbackGenerator(style: .soft)
             generator.impactOccurred()
         }
+        
+        static func capture() {
+            let generator = UIImpactFeedbackGenerator(style: .heavy)
+            generator.impactOccurred()
+        }
+    }
+    
+    // Capture function helper to filter loaded rolls
+    private var loadedRolls: [FilmRoll] {
+        filmStore.rolls.filter { $0.status == .loaded }
+            .sorted { ($0.dateLoaded ?? .distantPast) > ($1.dateLoaded ?? .distantPast) }
+    }
+    
+    // MARK: - Capture → Journal helper
+
+    private func captureExposure(to roll: FilmRoll, frame: Int, notes: String) {
+        // Resolve current exposure from the wheels
+        let iso = isoValues[vm.exposure.isoIndex]
+        let aperture = apertureValues[vm.exposure.apertureIndex]
+        let shutter = shutterValues[vm.exposure.shutterIndex]
+
+        // Current EV numbers from the meter
+        let sceneEV = vm.sceneEV100Value
+        let settingsEV = vm.settingsEV100Value
+        let delta = vm.evDeltaValue
+
+        let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let entry = FilmExposureEntry(
+            frameNumber: frame,
+            dateCaptured: Date(),
+            iso: iso,
+            aperture: aperture,
+            shutter: shutter,
+            manualMode: vm.manualMode,
+            sceneEV100: sceneEV,
+            settingsEV100: settingsEV,
+            evDelta: delta,
+            notes: trimmedNotes
+        )
+
+        // Use the latest copy of this roll from the store,
+        // then update and persist it via FilmRollStore.
+        guard var latest = filmStore.rolls.first(where: { $0.id == roll.id }) else {
+            return
+        }
+        latest.journal.append(entry)
+        filmStore.updateRoll(latest)
     }
 }
