@@ -13,6 +13,9 @@ struct JournalView: View {
     /// Controls whether the journal entries are visible.
     @State private var isExpanded: Bool = false
     
+    /// Effective ISO for this roll at display time
+    private var effectiveISO: Double { roll.effectiveISO }
+    
     /// Called when the user deletes an entry.
     let onDeleteEntry: (FilmExposureEntry) -> Void
 
@@ -88,26 +91,39 @@ struct JournalView: View {
 
     private func journalEntryView(_ entry: FilmExposureEntry) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            // Line 1: Frame #
-            if let frame = entry.frameNumber {
-                Text("Frame \(frame)")
-                    .font(.headline)
-            } else {
-                Text("Frame")
-                    .font(.headline)
+            HStack {
+                // Line 1: Frame #
+                if let frame = entry.frameNumber {
+                    Text("Frame \(frame)")
+                        .font(.headline)
+                } else {
+                    Text("Frame")
+                        .font(.headline)
+                }
+                
+                Spacer()
+                
+                Text(entry.dateCaptured.formatted(date: .abbreviated, time: .omitted))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            
-            Spacer()
 
-            Text(entry.dateCaptured.formatted(date: .abbreviated, time: .omitted))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            // Line 2: f/(f stop) • shutter s • ISO N
-            Text(formattedExposure(for: entry))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
+            // Line 2: f/(f stop) • shutter s • ISO N (if effective ISO != exposure ISO, display ISO in orange in the journal
+            HStack(spacing: 0) {
+                Text(exposurePrefix(for: entry))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                
+                let isoInt = Int(round(entry.iso))
+                let effInt = Int(round(effectiveISO))
+                let isoText = "ISO \(isoInt)"
+                
+                Text(isoText)
+                    .font(.subheadline)
+                    .foregroundStyle(isoInt == effInt ? .secondary : Color.orange)
+                
+            }
+                
             // Line 3: notes (if any)
             let trimmedNotes = entry.notes.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmedNotes.isEmpty {
@@ -119,12 +135,12 @@ struct JournalView: View {
 
     // MARK: - Formatting helpers
 
-    /// Formats exposure as: f/8.0 • 1/60s • ISO 800
-    private func formattedExposure(for entry: FilmExposureEntry) -> String {
+    /// Returns "f/8.0 • 1/60s • " (without the ISO segment).
+    private func exposurePrefix(for entry: FilmExposureEntry) -> String {
         // Aperture: f/8.0
         let apertureString = String(format: "%.1f", entry.aperture)
 
-        // Shutter: 1/60s or 4s
+        // Shutter: 1/60 or 4
         let shutter = entry.shutter
         let shutterString: String
         if shutter < 1.0 && shutter > 0 {
@@ -134,8 +150,6 @@ struct JournalView: View {
             shutterString = String(Int(round(shutter)))
         }
 
-        let isoInt = Int(round(entry.iso))
-
-        return "f/\(apertureString) • \(shutterString)s • ISO \(isoInt)"
+        return "f/\(apertureString) • \(shutterString)s • "
     }
 }

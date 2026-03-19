@@ -257,6 +257,20 @@ struct ContentView: View {
 
                         // Capture exposure button
                         Button {
+                            // Snapshot current exposure immediately
+                            let iso = isoValues[vm.exposure.isoIndex]
+                            let aperture = apertureValues[vm.exposure.apertureIndex]
+                            let shutter = shutterValues[vm.exposure.shutterIndex]
+
+                            capturedExposure = CapturedExposureSnapshot(
+                                iso: iso,
+                                aperture: aperture,
+                                shutter: shutter,
+                                manualMode: vm.manualMode,
+                                sceneEV100: vm.sceneEV100Value,
+                                settingsEV100: vm.settingsEV100Value,
+                                evDelta: vm.evDeltaValue
+                            )
                             Haptics.capture()
                             showingCaptureSheet = true
                         } label: {
@@ -550,15 +564,35 @@ struct ContentView: View {
     // MARK: - Capture → Journal helper
 
     private func captureExposure(to roll: FilmRoll, frame: Int, notes: String) {
-        // Resolve current exposure from the wheels
-        let iso = isoValues[vm.exposure.isoIndex]
-        let aperture = apertureValues[vm.exposure.apertureIndex]
-        let shutter = shutterValues[vm.exposure.shutterIndex]
+        
+        //capture snapshot and use that for metadata if available
+        let snapshot = capturedExposure
+        let iso: Double
+        let aperture: Double
+        let shutter: Double
+        let manualMode: Bool
+        let sceneEV: Double
+        let settingsEV: Double
+        let delta: Double
 
-        // Current EV numbers from the meter
-        let sceneEV = vm.sceneEV100Value
-        let settingsEV = vm.settingsEV100Value
-        let delta = vm.evDeltaValue
+        if let s = snapshot {
+            iso = s.iso
+            aperture = s.aperture
+            shutter = s.shutter
+            manualMode = s.manualMode
+            sceneEV = s.sceneEV100
+            settingsEV = s.settingsEV100
+            delta = s.evDelta
+        } else {
+            // Fallback to live values if, for some reason, we have no snapshot
+            iso = isoValues[vm.exposure.isoIndex]
+            aperture = apertureValues[vm.exposure.apertureIndex]
+            shutter = shutterValues[vm.exposure.shutterIndex]
+            manualMode = vm.manualMode
+            sceneEV = vm.sceneEV100Value
+            settingsEV = vm.settingsEV100Value
+            delta = vm.evDeltaValue
+        }
 
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -568,7 +602,7 @@ struct ContentView: View {
             iso: iso,
             aperture: aperture,
             shutter: shutter,
-            manualMode: vm.manualMode,
+            manualMode: manualMode,
             sceneEV100: sceneEV,
             settingsEV100: settingsEV,
             evDelta: delta,
@@ -582,5 +616,17 @@ struct ContentView: View {
         }
         latest.journal.append(entry)
         filmStore.updateRoll(latest)
+    }
+    
+    // capture snapshot of the exposure settings the moment the user taps the button
+    @State private var capturedExposure: CapturedExposureSnapshot?
+    private struct CapturedExposureSnapshot {
+        let iso: Double
+        let aperture: Double
+        let shutter: Double
+        let manualMode: Bool
+        let sceneEV100: Double
+        let settingsEV100: Double
+        let evDelta: Double
     }
 }
