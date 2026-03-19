@@ -63,7 +63,7 @@ struct CaptureExposureSheet: View {
                     
                     Divider()
 
-                    // Frame picker (1–36) inline with label
+                    // Frame picker (1–36) inline with label, excluding used frames
                     HStack {
                         Text("Frame")
                             .font(.headline)
@@ -71,14 +71,34 @@ struct CaptureExposureSheet: View {
 
                         Spacer()
 
-                        Picker("", selection: $selectedFrame) {
-                            ForEach(1...36, id: \.self) { frame in
-                                Text("\(frame)").tag(frame)
+                        let used = usedFramesForSelectedRoll
+                        let availableFrames = (1...36).filter { !used.contains($0) }
+
+                        if availableFrames.isEmpty {
+                            Text("All frames used")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Picker("", selection: $selectedFrame) {
+                                ForEach(availableFrames, id: \.self) { frame in
+                                    Text("\(frame)").tag(frame)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.wheel)
+                            .frame(width: 140, height: 160)
+                            .onAppear {
+                                if !availableFrames.contains(selectedFrame) {
+                                    selectedFrame = availableFrames.first ?? 1
+                                }
+                            }
+                            .onChange(of: selectedRollId) { _, _ in
+                                // When roll changes, re-align to a valid frame
+                                if !availableFrames.contains(selectedFrame) {
+                                    selectedFrame = availableFrames.first ?? 1
+                                }
                             }
                         }
-                        .labelsHidden()
-                        .pickerStyle(.wheel)
-                        .frame(width: 140, height: 160)   // tweak width/height as needed
                     }
                     
                     Divider()
@@ -114,13 +134,16 @@ struct CaptureExposureSheet: View {
                         guard
                             let id = selectedRollId,
                             let roll = loadedRolls.first(where: { $0.id == id })
-                        else {
-                            return
-                        }
+                        else { return }
+
                         onSave(roll, selectedFrame, notes)
                         isPresented = false
                     }
-                    .disabled(loadedRolls.isEmpty || selectedRollId == nil)
+                    .disabled(
+                        loadedRolls.isEmpty ||
+                        selectedRollId == nil ||
+                        usedFramesForSelectedRoll.count >= 36  // no available frames
+                    )
                 }
             }
         }
@@ -133,5 +156,18 @@ struct CaptureExposureSheet: View {
         let s = roll.stock.trimmingCharacters(in: .whitespacesAndNewlines)
         let label = [m, s].filter { !$0.isEmpty }.joined(separator: " ")
         return label.isEmpty ? "Film Roll" : label
+    }
+    
+    /// Computed properties to help remove frames from the frame picker to prevent duplicate frame entries
+    private var selectedRoll: FilmRoll? {
+        guard let id = selectedRollId else { return nil }
+        return loadedRolls.first(where: { $0.id == id })
+    }
+
+    private var usedFramesForSelectedRoll: Set<Int> {
+        guard let roll = selectedRoll else { return [] }
+        return Set(
+            roll.journal.compactMap { $0.frameNumber }
+        )
     }
 }

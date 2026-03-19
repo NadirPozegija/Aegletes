@@ -611,9 +611,11 @@ struct ContentView: View {
 
         // Use the latest copy of this roll from the store,
         // then update and persist it via FilmRollStore.
-        guard var latest = filmStore.rolls.first(where: { $0.id == roll.id }) else {
-            return
-        }
+        guard var latest = filmStore.rolls.first(where: { $0.id == roll.id }) else { return }
+        
+        // Safety: prevent multiple journal entries for the same frame
+        if latest.journal.contains(where: { $0.frameNumber == frame })
+        { return }
         latest.journal.append(entry)
         filmStore.updateRoll(latest)
     }
