@@ -254,33 +254,39 @@ struct ContentView: View {
                                 .foregroundStyle(.white)
                                 .font(.caption)
                         }
-
-                        // Capture exposure button
-                        Button {
-                            // Snapshot current exposure immediately
-                            let iso = isoValues[vm.exposure.isoIndex]
-                            let aperture = apertureValues[vm.exposure.apertureIndex]
-                            let shutter = shutterValues[vm.exposure.shutterIndex]
-
-                            capturedExposure = CapturedExposureSnapshot(
-                                iso: iso,
-                                aperture: aperture,
-                                shutter: shutter,
-                                manualMode: vm.manualMode,
-                                sceneEV100: vm.sceneEV100Value,
-                                settingsEV100: vm.settingsEV100Value,
-                                evDelta: vm.evDeltaValue
-                            )
-                            Haptics.capture()
-                            showingCaptureSheet = true
-                        } label: {
-                            Image(systemName: "camera.metering.spot") // or another symbol you like
-                                .font(.system(size: 18, weight: .semibold))
-                                .padding(8)
-                                .background(
-                                    Circle().fill(Color.white.opacity(0.9))
+                        
+                        VStack {
+                            // Capture exposure button
+                            Button {
+                                // Snapshot current exposure immediately
+                                let iso = isoValues[vm.exposure.isoIndex]
+                                let aperture = apertureValues[vm.exposure.apertureIndex]
+                                let shutter = shutterValues[vm.exposure.shutterIndex]
+                                
+                                capturedExposure = CapturedExposureSnapshot(
+                                    iso: iso,
+                                    aperture: aperture,
+                                    shutter: shutter,
+                                    manualMode: vm.manualMode,
+                                    sceneEV100: vm.sceneEV100Value,
+                                    settingsEV100: vm.settingsEV100Value,
+                                    evDelta: vm.evDeltaValue
                                 )
-                                .foregroundStyle(.black)
+                                Haptics.capture()
+                                showingCaptureSheet = true
+                            } label: {
+                                Image(systemName: "camera.metering.spot")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .padding(8)
+                                    .background(
+                                        Circle().fill(Color.white.opacity(0.9))
+                                    )
+                                    .foregroundStyle(.black)
+                            }
+                            
+                            Text("Add to Journal")
+                                .foregroundStyle(.white)
+                                .font(.caption)
                         }
 
                         Spacer()
