@@ -36,7 +36,7 @@
                             </label>
                         </subviews>
                         <viewLayoutGuide key="safeArea" id="Bcu-3y-fUS"/>
-                        <color key="backgroundColor" red="0.22607979718735" green="0.24884952909999999" blue="0.097051316348999994" alpha="1" colorSpace="calibratedRGB"/>
+                        <color key="backgroundColor" red="0.33738281250000002" green="0.28446943325452578" blue="0.21473501985414498" alpha="1" colorSpace="custom" customColorSpace="displayP3"/>
                         <color key="tintColor" systemColor="tintColor"/>
                     </view>
                 </viewController>
