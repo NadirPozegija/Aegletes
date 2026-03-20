@@ -275,11 +275,11 @@ struct ContentView: View {
                                 Haptics.capture()
                                 showingCaptureSheet = true
                             } label: {
-                                Image(systemName: "camera.metering.spot")
-                                    .font(.system(size: 18, weight: .semibold))
+                                Image(systemName: "pencil.and.list.clipboard")
+                                    .font(.system(size: 16, weight: .semibold))
                                     .padding(8)
                                     .background(
-                                        Circle().fill(Color.white.opacity(0.9))
+                                        Circle().fill(Color.white.opacity(0.85))
                                     )
                                     .foregroundStyle(.black)
                             }
@@ -504,8 +504,7 @@ struct ContentView: View {
                         .padding(.vertical, 6)
                         .background(
                             Capsule()
-                                .fill(Color.orange.opacity(isManual ?
-                                                           0.0 : 0.35))
+                                .fill(Color.orange.opacity(isManual ? 0.0 : 0.35))
                         )
                 }
                 .buttonStyle(.plain)
