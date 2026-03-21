@@ -46,6 +46,11 @@ final class FilmRollStore: ObservableObject {
     var cameraNames: [String] {
         database.cameraNames
     }
+    
+    /// URL of the JSON file backing the film database.
+    var databaseStoreURL: URL {
+        storeURL
+    }
 
     // MARK: - Mutating Operations
 
@@ -173,6 +178,23 @@ extension FilmRollStore {
                 database.rolls[idx].format       = newIdentity.format
                 database.rolls[idx].boxISO       = newIdentity.boxISO
             }
+        }
+    }
+}
+
+extension FilmRollStore {
+    /// Replace the current database with contents of the JSON at the given URL.
+    /// Returns true on success, false on failure.
+    /// Returns an optional error; nil means success.
+    @discardableResult
+    func importFromJSON(at url: URL) -> Error? {
+        do {
+            let imported = try FilmRollDatabase.loadThrowing(from: url)
+            self.database = imported
+            saveNow()
+            return nil
+        } catch {
+            return error
         }
     }
 }

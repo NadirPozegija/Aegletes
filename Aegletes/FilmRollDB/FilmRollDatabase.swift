@@ -224,3 +224,35 @@ struct FilmRollDatabase: Codable {
         }
     }
 }
+
+// MARK: - Throwing load (for explicit error handling)
+
+extension FilmRollDatabase {
+    enum LoadError: Error {
+        case fileNotFound
+        case dataReadFailed(underlying: Error)
+        case decodeFailed(underlying: Error)
+    }
+
+    static func loadThrowing(from url: URL) throws -> FilmRollDatabase {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: url.path) else {
+            throw LoadError.fileNotFound
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        do {
+            let data = try Data(contentsOf: url)
+            let db = try decoder.decode(FilmRollDatabase.self, from: data)
+            var mutableDB = db
+            mutableDB.rebuildCameraNames()
+            return mutableDB
+        } catch let decodeError as DecodingError {
+            throw LoadError.decodeFailed(underlying: decodeError)
+        } catch {
+            throw LoadError.dataReadFailed(underlying: error)
+        }
+    }
+}
