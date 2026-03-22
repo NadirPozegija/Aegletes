@@ -236,6 +236,21 @@ extension FilmRollDatabase {
 
     static func loadThrowing(from url: URL) throws -> FilmRollDatabase {
         let fm = FileManager.default
+
+        // If this is a security-scoped URL (e.g. from UIDocumentPicker), access it first
+        let needsStopAccessing: Bool
+        if url.startAccessingSecurityScopedResource() {
+            needsStopAccessing = true
+        } else {
+            needsStopAccessing = false
+        }
+
+        defer {
+            if needsStopAccessing {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
         guard fm.fileExists(atPath: url.path) else {
             throw LoadError.fileNotFound
         }
